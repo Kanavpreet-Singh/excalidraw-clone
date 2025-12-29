@@ -1,12 +1,16 @@
+import "dotenv/config";
 import express from "express";
 import jwt from "jsonwebtoken";
 import { authMiddleware } from "./middlewares/auth";
+import { prisma } from "@repo/db";
 
 const app = express();
 const PORT = 3001;
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key-change-in-production";
 
 app.use(express.json());
+console.log("DATABASE_URL:", process.env.DATABASE_URL);
+
 
 app.get("/", (req, res) => {
   res.json({ message: "Hello from HTTP backend" });
@@ -22,14 +26,27 @@ app.post("/api/signup", async (req, res) => {
       return res.status(400).json({ error: "Name, email, and password are required" });
     }
 
-    // TODO: Check if user already exists in database
+    // Check if user already exists
+    const existingUser = await prisma.user.findUnique({
+      where: { email }
+    });
 
-    // TODO: Save user to database
-    // const user = await db.user.create({ name, email, password });
+    if (existingUser) {
+      return res.status(400).json({ error: "User already exists" });
+    }
+
+    // Save user to database
+    const user = await prisma.user.create({
+      data: {
+        name,
+        email,
+        password // Note: In production, hash this password
+      }
+    });
 
     res.status(201).json({ 
       message: "User created successfully",
-      user: { name, email }
+      user: { id: user.id, name: user.name, email: user.email }
     });
   } catch (error) {
     console.error("Signup error:", error);
@@ -47,25 +64,27 @@ app.post("/api/signin", async (req, res) => {
       return res.status(400).json({ error: "Email and password are required" });
     }
 
-    // TODO: Find user from database
-    // const user = await db.user.findUnique({ where: { email } });
+    // Find user from database
+    const user = await prisma.user.findUnique({ 
+      where: { email } 
+    });
     
-    // TODO: Verify user exists
-    // if (!user) {
-    //   return res.status(401).json({ error: "Invalid credentials" });
-    // }
+    // Verify user exists
+    if (!user) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
 
-    // TODO: Verify password
-    // if (user.password !== password) {
-    //   return res.status(401).json({ error: "Invalid credentials" });
-    // }
+    // Verify password
+    if (user.password !== password) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
 
     // Generate JWT token
     const token = jwt.sign(
       { 
-        email,
-        // userId: user.id,
-        // name: user.name
+        userId: user.id,
+        email: user.email,
+        name: user.name
       },
       JWT_SECRET,
       { expiresIn: "24h" }
@@ -88,27 +107,27 @@ app.post("/api/create-room", authMiddleware, async (req, res) => {
     const user = (req as any).user;
     
     // Generate random 4-digit room ID
-    const roomId = Math.floor(1000 + Math.random() * 9000).toString();
+    let roomId = Math.floor(1000 + Math.random() * 9000).toString();
 
-    // TODO: Check if roomId already exists in database, regenerate if needed
-    // let exists = await db.room.findUnique({ where: { roomId } });
-    // while (exists) {
-    //   roomId = Math.floor(1000 + Math.random() * 9000).toString();
-    //   exists = await db.room.findUnique({ where: { roomId } });
-    // }
+    // Check if roomId already exists in database, regenerate if needed
+    let exists = await prisma.room.findUnique({ where: { roomId } });
+    while (exists) {
+      roomId = Math.floor(1000 + Math.random() * 9000).toString();
+      exists = await prisma.room.findUnique({ where: { roomId } });
+    }
 
-    // TODO: Store room in database with owner's userId
-    // const room = await db.room.create({
-    //   data: {
-    //     roomId,
-    //     ownerId: user.userId,
-    //   }
-    // });
+    // Store room in database with owner's userId
+    const room = await prisma.room.create({
+      data: {
+        roomId,
+        userId: user.userId,
+      }
+    });
 
     res.status(201).json({
       message: "Room created successfully",
-      roomId,
-      // ownerId: user.userId
+      roomId: room.roomId,
+      ownerId: user.userId
     });
   } catch (error) {
     console.error("Create room error:", error);
