@@ -161,4 +161,58 @@ router.get("/room/:roomId/members", authMiddleware, async (req, res) => {
   }
 });
 
+// Leave room endpoint
+router.delete("/leave-room/:roomId", authMiddleware, async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const { roomId } = req.params;
+
+    // Check if room exists
+    const room = await prisma.room.findUnique({
+      where: { roomId }
+    });
+
+    if (!room) {
+      return res.status(404).json({ error: "Room not found" });
+    }
+
+    // Check if user is a member
+    const member = await prisma.roomMember.findUnique({
+      where: {
+        userId_roomId: {
+          userId: user.userId,
+          roomId: room.id
+        }
+      }
+    });
+
+    if (!member) {
+      return res.status(400).json({ error: "You are not a member of this room" });
+    }
+
+    // Check if user is admin
+    if (room.userId === user.userId) {
+      return res.status(403).json({ error: "Room admin cannot leave the room" });
+    }
+
+    // Remove user from room
+    await prisma.roomMember.delete({
+      where: {
+        userId_roomId: {
+          userId: user.userId,
+          roomId: room.id
+        }
+      }
+    });
+
+    res.status(200).json({
+      message: "Successfully left the room",
+      roomId: room.roomId
+    });
+  } catch (error) {
+    console.error("Leave room error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 export default router;
