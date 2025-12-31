@@ -19,6 +19,8 @@ export default function RoomPage() {
   
   const [messages, setMessages] = useState<Message[]>([]);
   const [members, setMembers] = useState<RoomMember[]>([]);
+  const [adminId, setAdminId] = useState<number | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -46,6 +48,12 @@ export default function RoomPage() {
     try {
       const data = await api.getMembers(token, roomId);
       setMembers(data.members);
+      setAdminId(data.adminId);
+      // Find current user from members list
+      const currentMember = data.members.find(m => !currentUserId || m.id === currentUserId);
+      if (currentMember && !currentUserId) {
+        setCurrentUserId(currentMember.id);
+      }
     } catch (err) {
       console.error('Error fetching members:', err);
     }
@@ -105,6 +113,19 @@ export default function RoomPage() {
         router.push('/dashboard');
       } catch (err) {
         alert(err instanceof Error ? err.message : 'Failed to leave room');
+      }
+    }
+  };
+
+  const handleDeleteRoom = async () => {
+    if (!token) return;
+    
+    if (confirm('Are you sure you want to delete this room? This will remove all messages and members permanently.')) {
+      try {
+        await api.deleteRoom(token, roomId);
+        router.push('/dashboard');
+      } catch (err) {
+        alert(err instanceof Error ? err.message : 'Failed to delete room');
       }
     }
   };
@@ -185,13 +206,23 @@ export default function RoomPage() {
                 >
                   Dashboard
                 </Button>
-                <Button
-                  onClick={handleLeaveRoom}
-                  variant="danger"
-                  mode={theme}
-                >
-                  Leave Room
-                </Button>
+                {currentUserId === adminId ? (
+                  <Button
+                    onClick={handleDeleteRoom}
+                    variant="danger"
+                    mode={theme}
+                  >
+                    Delete Room
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={handleLeaveRoom}
+                    variant="danger"
+                    mode={theme}
+                  >
+                    Leave Room
+                  </Button>
+                )}
               </div>
             </div>
           </div>

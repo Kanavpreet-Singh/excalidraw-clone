@@ -28,6 +28,14 @@ export interface RoomMember {
   isAdmin: boolean;
 }
 
+export interface MyRoom {
+  id: number;
+  roomId: string;
+  memberCount: number;
+  messageCount: number;
+  createdAt: string;
+}
+
 export const api = {
   // Auth
   signup: async (name: string, email: string, password: string) => {
@@ -63,6 +71,16 @@ export const api = {
     return res.json();
   },
 
+  getMyRooms: async (token: string): Promise<{ rooms: MyRoom[] }> => {
+    const res = await fetch(`${API_URL}/my-rooms`, {
+      headers: {
+        'token': token
+      }
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+
   joinRoom: async (token: string, roomId: string) => {
     const res = await fetch(`${API_URL}/join-room`, {
       method: 'POST',
@@ -78,6 +96,17 @@ export const api = {
 
   leaveRoom: async (token: string, roomId: string) => {
     const res = await fetch(`${API_URL}/leave-room/${roomId}`, {
+      method: 'DELETE',
+      headers: {
+        'token': token
+      }
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+
+  deleteRoom: async (token: string, roomId: string) => {
+    const res = await fetch(`${API_URL}/delete-room/${roomId}`, {
       method: 'DELETE',
       headers: {
         'token': token
@@ -111,7 +140,7 @@ export const api = {
     return res.json();
   },
 
-  getMembers: async (token: string, roomId: string): Promise<{ members: RoomMember[] }> => {
+  getMembers: async (token: string, roomId: string): Promise<{ members: RoomMember[], adminId: number }> => {
     const res = await fetch(`${API_URL}/room/${roomId}/members`, {
       headers: {
         'token': token

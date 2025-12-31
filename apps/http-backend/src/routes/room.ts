@@ -4,6 +4,44 @@ import { prisma } from "@repo/db";
 
 const router: RouterType = Router();
 
+// Get all rooms created by the current user
+router.get("/my-rooms", authMiddleware, async (req, res) => {
+  try {
+    const user = (req as any).user;
+
+    // Fetch all rooms created by this user
+    const rooms = await prisma.room.findMany({
+      where: {
+        userId: user.userId
+      },
+      include: {
+        _count: {
+          select: {
+            members: true,
+            chats: true
+          }
+        }
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
+
+    res.status(200).json({
+      rooms: rooms.map(room => ({
+        id: room.id,
+        roomId: room.roomId,
+        memberCount: room._count.members,
+        messageCount: room._count.chats,
+        createdAt: room.createdAt
+      }))
+    });
+  } catch (error) {
+    console.error("Get my rooms error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // Create room endpoint
 router.post("/create-room", authMiddleware, async (req, res) => {
   try {
@@ -211,6 +249,41 @@ router.delete("/leave-room/:roomId", authMiddleware, async (req, res) => {
     });
   } catch (error) {
     console.error("Leave room error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Delete room endpoint (only room admin can delete)
+router.delete("/delete-room/:roomId", authMiddleware, async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const { roomId } = req.params;
+
+    // Check if room exists
+    const room = await prisma.room.findUnique({
+      where: { roomId }
+    });
+
+    if (!room) {
+      return res.status(404).json({ error: "Room not found" });
+    }
+
+    // Check if user is the admin of the room
+    if (room.userId !== user.userId) {
+      return res.status(403).json({ error: "Only the room admin can delete the room" });
+    }
+
+    // Delete the room (cascading deletes will handle RoomMember and Chat entries)
+    await prisma.room.delete({
+      where: { roomId }
+    });
+
+    res.status(200).json({
+      message: "Room deleted successfully",
+      roomId: room.roomId
+    });
+  } catch (error) {
+    console.error("Delete room error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });

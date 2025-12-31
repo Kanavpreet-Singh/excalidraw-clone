@@ -41,7 +41,7 @@ model RoomMember {
   userId    Int
   user      User     @relation(fields: [userId], references: [id])
   roomId    Int
-  room      Room     @relation(fields: [roomId], references: [id])
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
   joinedAt  DateTime @default(now())
 
   @@unique([userId, roomId])
@@ -53,7 +53,7 @@ model Chat {
   userId    Int
   user      User     @relation(fields: [userId], references: [id])
   roomId    Int
-  room      Room     @relation(fields: [roomId], references: [id])
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
