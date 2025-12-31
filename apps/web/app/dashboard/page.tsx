@@ -2,11 +2,17 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import NextLink from 'next/link';
 import { useAuth } from '../../contexts/AuthContext';
-import Link from 'next/link';
+import { useTheme } from '../../contexts/ThemeContext';
+import { Container } from '@repo/ui/container';
+import { Button } from '@repo/ui/button';
+import { Card } from '@repo/ui/card';
+import { ThemeToggle } from '../../components/ThemeToggle';
 
 export default function DashboardPage() {
   const { isAuthenticated, logout } = useAuth();
+  const { theme } = useTheme();
   const router = useRouter();
 
   useEffect(() => {
@@ -20,52 +26,44 @@ export default function DashboardPage() {
   }
 
   return (
-    <div style={{ maxWidth: '800px', margin: '50px auto', padding: '20px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '40px' }}>
-        <h1>Dashboard</h1>
-        <button 
-          onClick={logout}
-          style={{ padding: '8px 16px', background: '#dc3545', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}
-        >
-          Logout
-        </button>
-      </div>
+    <>
+      <ThemeToggle />
+      <Container maxWidth="800px" mode={theme} style={{ marginTop: '50px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '40px' }}>
+          <h1 style={{ fontSize: '36px', fontWeight: '700' }}>Dashboard</h1>
+          <Button 
+            onClick={logout}
+            variant="danger"
+            mode={theme}
+          >
+            Logout
+          </Button>
+        </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-        <Link 
-          href="/dashboard/create-room"
-          style={{ 
-            padding: '40px', 
-            background: '#f8f9fa', 
-            border: '2px solid #dee2e6',
-            borderRadius: '10px', 
-            textDecoration: 'none', 
-            color: '#000',
-            textAlign: 'center',
-            transition: 'all 0.2s'
-          }}
-        >
-          <h2>Create Room</h2>
-          <p>Start a new collaborative session</p>
-        </Link>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+          <NextLink href="/dashboard/create-room" style={{ textDecoration: 'none' }}>
+            <Card
+              title="Create Room"
+              mode={theme}
+              onClick={() => {}}
+              style={{ height: '100%', cursor: 'pointer' }}
+            >
+              <p style={{ opacity: 0.8 }}>Start a new collaborative session</p>
+            </Card>
+          </NextLink>
 
-        <Link 
-          href="/dashboard/join-room"
-          style={{ 
-            padding: '40px', 
-            background: '#f8f9fa', 
-            border: '2px solid #dee2e6',
-            borderRadius: '10px', 
-            textDecoration: 'none', 
-            color: '#000',
-            textAlign: 'center',
-            transition: 'all 0.2s'
-          }}
-        >
-          <h2>Join Room</h2>
-          <p>Enter a room code to join</p>
-        </Link>
-      </div>
-    </div>
+          <NextLink href="/dashboard/join-room" style={{ textDecoration: 'none' }}>
+            <Card
+              title="Join Room"
+              mode={theme}
+              onClick={() => {}}
+              style={{ height: '100%', cursor: 'pointer' }}
+            >
+              <p style={{ opacity: 0.8 }}>Enter a room code to join</p>
+            </Card>
+          </NextLink>
+        </div>
+      </Container>
+    </>
   );
 }

@@ -2,9 +2,16 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import NextLink from 'next/link';
 import { useAuth } from '../../contexts/AuthContext';
+import { useTheme } from '../../contexts/ThemeContext';
 import { api } from '../../lib/api';
-import Link from 'next/link';
+import { Container } from '@repo/ui/container';
+import { Input } from '@repo/ui/input';
+import { Button } from '@repo/ui/button';
+import { Label } from '@repo/ui/label';
+import { Link } from '@repo/ui/link';
+import { ThemeToggle } from '../../components/ThemeToggle';
 
 export default function SigninPage() {
   const [email, setEmail] = useState('');
@@ -12,6 +19,7 @@ export default function SigninPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
+  const { theme } = useTheme();
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -31,37 +39,47 @@ export default function SigninPage() {
   };
 
   return (
-    <div style={{ maxWidth: '400px', margin: '100px auto', padding: '20px' }}>
-      <h1>Sign In</h1>
-      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-        <div>
-          <label>Email</label>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            style={{ width: '100%', padding: '8px', marginTop: '5px' }}
-          />
-        </div>
-        <div>
-          <label>Password</label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            style={{ width: '100%', padding: '8px', marginTop: '5px' }}
-          />
-        </div>
-        {error && <p style={{ color: 'red' }}>{error}</p>}
-        <button type="submit" disabled={loading} style={{ padding: '10px', cursor: 'pointer' }}>
-          {loading ? 'Signing in...' : 'Sign In'}
-        </button>
-      </form>
-      <p style={{ marginTop: '20px' }}>
-        Don't have an account? <Link href="/signup">Sign Up</Link>
-      </p>
-    </div>
+    <>
+      <ThemeToggle />
+      <Container maxWidth="400px" mode={theme} style={{ marginTop: '100px' }}>
+        <h1 style={{ marginBottom: '30px', fontSize: '32px', fontWeight: '700' }}>Sign In</h1>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <div>
+            <Label htmlFor="email" mode={theme}>Email</Label>
+            <Input
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              mode={theme}
+              placeholder="Enter your email"
+            />
+          </div>
+          <div>
+            <Label htmlFor="password" mode={theme}>Password</Label>
+            <Input
+              id="password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              mode={theme}
+              placeholder="Enter your password"
+            />
+          </div>
+          {error && <p style={{ color: '#dc3545', fontSize: '14px' }}>{error}</p>}
+          <Button type="submit" disabled={loading} variant="primary" mode={theme} style={{ width: '100%' }}>
+            {loading ? 'Signing in...' : 'Sign In'}
+          </Button>
+        </form>
+        <p style={{ marginTop: '20px', textAlign: 'center' }}>
+          Don't have an account?{' '}
+          <NextLink href="/signup" style={{ color: '#0070f3', textDecoration: 'none' }}>
+            Sign Up
+          </NextLink>
+        </p>
+      </Container>
+    </>
   );
 }
