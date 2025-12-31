@@ -278,6 +278,18 @@ router.delete("/delete-room/:roomId", authMiddleware, async (req, res) => {
       where: { roomId }
     });
 
+    // Notify WebSocket server to inform connected clients
+    try {
+      await fetch('http://localhost:8080/notify-room-deleted', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomId })
+      });
+    } catch (wsError) {
+      console.error('Failed to notify WebSocket server:', wsError);
+      // Don't fail the delete operation if notification fails
+    }
+
     res.status(200).json({
       message: "Room deleted successfully",
       roomId: room.roomId

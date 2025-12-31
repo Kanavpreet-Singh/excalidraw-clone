@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useTheme } from '../../../contexts/ThemeContext';
+import { useWebSocket } from '../../../contexts/WebSocketContext';
 import { api, type Message, type RoomMember } from '../../../lib/api';
 import { Button } from '@repo/ui/button';
 import { Input } from '@repo/ui/input';
@@ -15,6 +16,7 @@ export default function RoomPage() {
   const roomId = params.roomId as string;
   const { token, isAuthenticated } = useAuth();
   const { theme } = useTheme();
+  const { isConnected, joinRoom, leaveRoom, sendMessage: wsSendMessage, onMessage, offMessage } = useWebSocket();
   const router = useRouter();
   
   const [messages, setMessages] = useState<Message[]>([]);
@@ -25,6 +27,7 @@ export default function RoomPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
+  const [roomNotFound, setRoomNotFound] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -38,6 +41,10 @@ export default function RoomPage() {
       setMessages(data.messages);
     } catch (err) {
       console.error('Error fetching messages:', err);
+      const errorMsg = err instanceof Error ? err.message : '';
+      if (errorMsg.includes('Room not found') || errorMsg.includes('not a member')) {
+        setRoomNotFound(true);
+      }
     }
   };
 
@@ -55,6 +62,10 @@ export default function RoomPage() {
       }
     } catch (err) {
       console.error('Error fetching members:', err);
+      const errorMsg = err instanceof Error ? err.message : '';
+      if (errorMsg.includes('Room not found') || errorMsg.includes('not a member')) {
+        setRoomNotFound(true);
+      }
     }
   };
 
@@ -67,7 +78,62 @@ export default function RoomPage() {
 
     fetchMessages();
     fetchMembers();
-  }, [isAuthenticated, token, roomId]);
+
+    // Join room via WebSocket when connected
+    if (isConnected) {
+      joinRoom(roomId);
+    }
+
+    return () => {
+      if (isConnected) {
+        leaveRoom();
+      }
+    };
+  }, [isAuthenticated, token, roomId, isConnected]);
+
+  // Handle WebSocket messages
+  useEffect(() => {
+    const handleMessage = (msg: any) => {
+      switch (msg.type) {
+        case 'new-message':
+          // Add new message to the list
+          setMessages(prev => [...prev, msg.message]);
+          break;
+        
+        case 'user-joined':
+          console.log('User joined:', msg.userId);
+          // Optionally refresh members list
+          fetchMembers();
+          break;
+        
+        case 'user-left':
+          console.log('User left:', msg.userId);
+          // Optionally refresh members list
+          fetchMembers();
+          break;
+        
+        case 'room-deleted':
+          // Room has been deleted by admin
+          setRoomNotFound(true);
+          break;
+        
+        case 'error':
+          const errorMsg = msg.message || '';
+          if (errorMsg.includes('Room not found') || errorMsg.includes('not a member')) {
+            setRoomNotFound(true);
+          } else {
+            setError(errorMsg);
+          }
+          break;
+      }
+    };
+
+    onMessage(handleMessage);
+
+    return () => {
+      offMessage(handleMessage);
+    };
+  }, [onMessage, offMessage]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -76,15 +142,23 @@ export default function RoomPage() {
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!token || !newMessage.trim()) return;
+    if (!newMessage.trim()) return;
 
     setLoading(true);
     setError('');
 
     try {
-      await api.sendMessage(token, roomId, newMessage);
-      setNewMessage('');
-      await fetchMessages(); // Immediately refresh messages
+      if (isConnected) {
+        // Send via WebSocket for real-time delivery
+        wsSendMessage(roomId, newMessage);
+        setNewMessage('');
+      } else {
+        // Fallback to HTTP if WebSocket is not connected
+        if (!token) return;
+        await api.sendMessage(token, roomId, newMessage);
+        setNewMessage('');
+        await fetchMessages(); // Refresh messages
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send message');
     } finally {
@@ -126,6 +200,39 @@ export default function RoomPage() {
 
   if (!isAuthenticated) {
     return null;
+  }
+
+  // Show room not found message and redirect
+  if (roomNotFound) {
+    return (
+      <>
+        <ThemeToggle />
+        <div style={{ 
+          display: 'flex', 
+          flexDirection: 'column',
+          alignItems: 'center', 
+          justifyContent: 'center', 
+          height: '100vh',
+          background: isDark ? '#0a0a0a' : '#f8f9fa'
+        }}>
+          <Card mode={theme} style={{ maxWidth: '500px', padding: '40px', textAlign: 'center' }}>
+            <h2 style={{ marginBottom: '20px', color: isDark ? '#f3f4f6' : '#1f2937' }}>
+              Room Not Found
+            </h2>
+            <p style={{ marginBottom: '30px', opacity: 0.8 }}>
+              This room has been deleted or you don't have access to it.
+            </p>
+            <Button
+              onClick={() => router.push('/dashboard')}
+              variant="primary"
+              mode={theme}
+            >
+              Go to Dashboard
+            </Button>
+          </Card>
+        </div>
+      </>
+    );
   }
 
   return (

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import { AuthProvider } from "../contexts/AuthContext";
 import { ThemeProvider } from "../contexts/ThemeContext";
+import { WebSocketProvider } from "../contexts/WebSocketContext";
 import "./globals.css";
 
 const geistSans = localFont({
@@ -28,7 +29,9 @@ export default function RootLayout({
       <body className={`${geistSans.variable} ${geistMono.variable}`}>
         <ThemeProvider>
           <AuthProvider>
-            {children}
+            <WebSocketProvider>
+              {children}
+            </WebSocketProvider>
           </AuthProvider>
         </ThemeProvider>
       </body>
