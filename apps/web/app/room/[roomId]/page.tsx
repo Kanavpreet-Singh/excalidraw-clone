@@ -27,7 +27,6 @@ export default function RoomPage() {
   const [copied, setCopied] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const isDark = theme === 'dark';
 
@@ -68,17 +67,6 @@ export default function RoomPage() {
 
     fetchMessages();
     fetchMembers();
-
-    // Poll for new messages every 2 seconds
-    pollingIntervalRef.current = setInterval(() => {
-      fetchMessages();
-    }, 2000);
-
-    return () => {
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-      }
-    };
   }, [isAuthenticated, token, roomId]);
 
   // Scroll to bottom when messages change
