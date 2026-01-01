@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import { config } from "@/config";
 
 export default function SignIn() {
   const router = useRouter();
@@ -13,6 +14,18 @@ export default function SignIn() {
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+
+  // Redirect if already logged in
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    const user = localStorage.getItem("user");
+    if (token && user) {
+      router.replace("/");
+    } else {
+      setCheckingAuth(false);
+    }
+  }, [router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -20,8 +33,7 @@ export default function SignIn() {
     setLoading(true);
 
     try {
-      // TODO: Replace with actual API call
-      const response = await fetch("/api/signin", {
+      const response = await fetch(`${config.API_URL}/api/signin`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -29,12 +41,29 @@ export default function SignIn() {
         body: JSON.stringify(formData),
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        const data = await response.json();
         throw new Error(data.error || "Sign in failed");
       }
 
-      // Redirect to dashboard or home on success
+      // Store the JWT token and user info in localStorage
+      if (data.token) {
+        localStorage.setItem("token", data.token);
+        // Decode JWT to get user info (basic decode without verification)
+        const payload = JSON.parse(atob(data.token.split('.')[1]));
+        const userData = {
+          name: payload.name,
+          email: payload.email,
+          userId: payload.userId
+        };
+        localStorage.setItem("user", JSON.stringify(userData));
+        
+        // Dispatch custom event to notify Navbar of auth change
+        window.dispatchEvent(new CustomEvent("auth-change", { detail: userData }));
+      }
+
+      // Redirect to home page on success
       router.push("/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
@@ -42,6 +71,15 @@ export default function SignIn() {
       setLoading(false);
     }
   };
+
+  // Show nothing while checking auth
+  if (checkingAuth) {
+    return (
+      <div className="min-h-[calc(100vh-4rem)] bg-background flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-[calc(100vh-4rem)] bg-background">

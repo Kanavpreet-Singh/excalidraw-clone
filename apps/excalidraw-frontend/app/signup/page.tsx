@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import { config } from "@/config";
 
 export default function SignUp() {
   const router = useRouter();
@@ -14,6 +15,18 @@ export default function SignUp() {
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+
+  // Redirect if already logged in
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    const user = localStorage.getItem("user");
+    if (token && user) {
+      router.replace("/");
+    } else {
+      setCheckingAuth(false);
+    }
+  }, [router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,8 +34,7 @@ export default function SignUp() {
     setLoading(true);
 
     try {
-      // TODO: Replace with actual API call
-      const response = await fetch("/api/signup", {
+      const response = await fetch(`${config.API_URL}/api/signup`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -30,8 +42,9 @@ export default function SignUp() {
         body: JSON.stringify(formData),
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        const data = await response.json();
         throw new Error(data.error || "Signup failed");
       }
 
@@ -43,6 +56,15 @@ export default function SignUp() {
       setLoading(false);
     }
   };
+
+  // Show nothing while checking auth
+  if (checkingAuth) {
+    return (
+      <div className="min-h-[calc(100vh-4rem)] bg-background flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-[calc(100vh-4rem)] bg-background">
