@@ -1,0 +1,90 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-canvas: var(--canvas);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-danger: var(--danger);
+  --color-danger-foreground: var(--danger-foreground);
+}
+
+:root {
+  /* Core surfaces */
+  --background: #f8fafc;
+  --surface: #ffffff;
+  --canvas: #ffffff;
+  --muted: #f1f5f9;
+
+  /* Text */
+  --foreground: #0f172a;
+  --muted-foreground: #64748b;
+
+  /* UI */
+  --border: #e2e8f0;
+  --input: #e2e8f0;
+  --ring: #3b82f6;
+
+  /* Accent */
+  --primary: #2563eb;
+  --primary-foreground: #ffffff;
+
+  /* States */
+  --danger: #dc2626;
+  --danger-foreground: #ffffff;
+}
+
+.dark {
+  /* Core surfaces */
+  --background: #020617;
+  --surface: #0f172a;
+  --canvas: #1e293b;
+  --muted: #1e293b;
+
+  /* Text */
+  --foreground: #f1f5f9;
+  --muted-foreground: #94a3b8;
+
+  /* UI */
+  --border: #334155;
+  --input: #334155;
+  --ring: #60a5fa;
+
+  /* Accent */
+  --primary: #3b82f6;
+  --primary-foreground: #f8fafc;
+
+  /* States */
+  --danger: #ef4444;
+  --danger-foreground: #f8fafc;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  html,
+  body {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont,
+      "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--primary) 30%, transparent);
+  }
+}
