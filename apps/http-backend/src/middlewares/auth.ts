@@ -5,7 +5,15 @@ const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key-change-in-producti
 
 export const authMiddleware = (req: Request, res: Response, next: NextFunction) => {
   try {
-    const token = req.headers.token as string;
+    // Support both 'token' header and 'Authorization: Bearer <token>' header
+    let token = req.headers.token as string;
+    
+    if (!token && req.headers.authorization) {
+      const authHeader = req.headers.authorization as string;
+      if (authHeader.startsWith('Bearer ')) {
+        token = authHeader.substring(7);
+      }
+    }
 
     if (!token) {
       return res.status(401).json({ error: "Token not provided" });

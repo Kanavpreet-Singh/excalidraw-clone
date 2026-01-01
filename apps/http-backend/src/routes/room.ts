@@ -1,37 +1,94 @@
 import { Router, type Router as RouterType } from "express";
 import { authMiddleware } from "../middlewares/auth";
 import { prisma } from "@repo/db";
+import jwt from "jsonwebtoken";
 
 const router: RouterType = Router();
+const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key-change-in-production";
 
-// Get all rooms created by the current user
+// Beacon endpoint for leave room on page close (sendBeacon uses POST with text/plain)
+router.post("/leave-room-beacon/:roomId", async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const { token } = req.body;
+
+    if (!token) {
+      return res.status(401).json({ error: "Token not provided" });
+    }
+
+    // Verify token
+    const decoded = jwt.verify(token, JWT_SECRET) as { userId: number };
+    const userId = decoded.userId;
+
+    // Check if room exists
+    const room = await prisma.room.findUnique({
+      where: { roomId }
+    });
+
+    if (!room) {
+      return res.status(404).json({ error: "Room not found" });
+    }
+
+    // Don't allow admin to leave
+    if (room.userId === userId) {
+      return res.status(200).json({ message: "Admin cannot leave" });
+    }
+
+    // Remove user from room (ignore if not a member)
+    await prisma.roomMember.deleteMany({
+      where: {
+        userId: userId,
+        roomId: room.id
+      }
+    });
+
+    res.status(200).json({ message: "Left room" });
+  } catch (error) {
+    console.error("Leave room beacon error:", error);
+    res.status(200).json({ message: "Error" }); // Return 200 for beacon
+  }
+});
+
+// Get all rooms the user is a member of (includes owned and joined rooms)
 router.get("/my-rooms", authMiddleware, async (req, res) => {
   try {
     const user = (req as any).user;
 
-    // Fetch all rooms created by this user
-    const rooms = await prisma.room.findMany({
+    // Fetch all rooms where user is a member
+    const memberships = await prisma.roomMember.findMany({
       where: {
         userId: user.userId
       },
       include: {
-        _count: {
-          select: {
-            members: true
+        room: {
+          include: {
+            admin: {
+              select: {
+                id: true,
+                name: true
+              }
+            },
+            _count: {
+              select: {
+                members: true
+              }
+            }
           }
         }
       },
       orderBy: {
-        createdAt: 'desc'
+        joinedAt: 'desc'
       }
     });
 
     res.status(200).json({
-      rooms: rooms.map(room => ({
-        id: room.id,
-        roomId: room.roomId,
-        memberCount: room._count.members,
-        createdAt: room.createdAt
+      rooms: memberships.map(m => ({
+        id: m.room.id,
+        roomId: m.room.roomId,
+        memberCount: m.room._count.members,
+        createdAt: m.room.createdAt,
+        isAdmin: m.room.userId === user.userId,
+        adminName: m.room.admin.name
       }))
     });
   } catch (error) {

@@ -15,6 +15,8 @@ interface Room {
   roomId: string;
   memberCount: number;
   createdAt: string;
+  isAdmin: boolean;
+  adminName: string;
 }
 
 // API Functions
@@ -84,6 +86,20 @@ async function getMyRooms(token: string): Promise<Room[]> {
   }
 }
 
+async function deleteRoom(token: string, roomId: string): Promise<void> {
+  const response = await fetch(`${config.API_URL}/api/delete-room/${roomId}`, {
+    method: "DELETE",
+    headers: {
+      token: token,
+    },
+  });
+
+  if (!response.ok) {
+    const data = await response.json();
+    throw new Error(data.error || "Failed to delete room");
+  }
+}
+
 export default function Dashboard() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
@@ -93,6 +109,7 @@ export default function Dashboard() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
+  const [deletingRoomId, setDeletingRoomId] = useState<string | null>(null);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -171,6 +188,29 @@ export default function Dashboard() {
 
   const handleOpenRoom = (roomId: string) => {
     router.push(`/canvas/${roomId}`);
+  };
+
+  const handleDeleteRoom = async (roomId: string) => {
+    if (!confirm("Are you sure you want to delete this room? This action cannot be undone.")) {
+      return;
+    }
+
+    setError("");
+    setSuccess("");
+    setDeletingRoomId(roomId);
+
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) throw new Error("Not authenticated");
+
+      await deleteRoom(token, roomId);
+      setSuccess("Room deleted successfully");
+      fetchRooms(token);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete room");
+    } finally {
+      setDeletingRoomId(null);
+    }
   };
 
   if (loading) {
@@ -288,9 +328,20 @@ export default function Dashboard() {
                   className="flex items-center justify-between p-4 bg-background border border-border rounded-lg hover:border-primary/50 transition-colors"
                 >
                   <div>
-                    <p className="font-medium text-foreground font-mono text-sm">
-                      {room.roomId}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium text-foreground font-mono text-sm">
+                        {room.roomId}
+                      </p>
+                      {room.isAdmin ? (
+                        <span className="px-2 py-0.5 text-xs font-medium bg-primary/20 text-primary rounded-full">
+                          Owner
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground rounded-full">
+                          by {room.adminName}
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -303,12 +354,32 @@ export default function Dashboard() {
                       </span>
                     </div>
                   </div>
-                  <button
-                    onClick={() => handleOpenRoom(room.roomId)}
-                    className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
-                  >
-                    Open
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleOpenRoom(room.roomId)}
+                      className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+                    >
+                      Open
+                    </button>
+                    {room.isAdmin && (
+                      <button
+                        onClick={() => handleDeleteRoom(room.roomId)}
+                        disabled={deletingRoomId === room.roomId}
+                        className="px-3 py-2 bg-danger/10 text-danger border border-danger/30 rounded-lg text-sm font-medium hover:bg-danger/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Delete Room"
+                      >
+                        {deletingRoomId === room.roomId ? (
+                          <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                          </svg>
+                        ) : (
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        )}
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
