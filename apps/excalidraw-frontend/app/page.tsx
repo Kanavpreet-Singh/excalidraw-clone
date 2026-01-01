@@ -1,17 +1,11 @@
 import Image from "next/image";
 import Link from "next/link";
-import Navbar from "@/components/Navbar";
-import Footer from "@/components/Footer";
 
 export default function Home() {
   return (
-    <div className="flex flex-col min-h-screen bg-background">
-      <Navbar />
-      
-      <main className="flex-1">
-        {/* Hero Section */}
-        <section className="bg-surface border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 md:py-32">
+    <>
+      {/* Hero Section */}
+      <section className="bg-surface border-b border-border">      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 md:py-32">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
               <div className="space-y-6">
                 <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-foreground leading-tight">
@@ -166,9 +160,6 @@ export default function Home() {
             </Link>
           </div>
         </section>
-      </main>
-
-      <Footer />
-    </div>
+      </>
   );
 }
