@@ -2,12 +2,38 @@
 
 import React, { useEffect, useRef, useState } from 'react'
 
+type ShapeType = "rect" | "circle" | "line" | "diamond";
+
+interface Shape {
+    type: ShapeType;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    // For circle: x,y is center, width is radius
+    // For line: x,y is start, width,height is end point offset
+    // For diamond: x,y is center, width,height is size
+}
+
 const Page = () => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const [isDark, setIsDark] = useState(false);
+    const [selectedShape, setSelectedShape] = useState<ShapeType>("rect");
+    const shapesRef = useRef<Shape[]>([]);
 
     useEffect(() => {
-        setIsDark(localStorage.getItem("theme") === "dark");
+        const savedTheme = localStorage.getItem("theme");
+        const isDarkTheme = savedTheme === "dark";
+        setIsDark(isDarkTheme);
+        
+        // Apply theme class on initial load
+        if (isDarkTheme) {
+            document.documentElement.classList.add("dark");
+            document.body.classList.add("dark");
+        } else {
+            document.documentElement.classList.remove("dark");
+            document.body.classList.remove("dark");
+        }
     }, []);
 
     const toggleTheme = () => {
@@ -35,14 +61,84 @@ const Page = () => {
 
             ctx.strokeStyle = localStorage.getItem("theme") === "dark" ? "white" : "black";
             
-            
-            ctx.strokeRect(0,0,100,100);
-            
+            let clicked=false;
+
+            let startX=0;
+            let startY=0;
+
+            const drawShape = (shape: Shape) => {
+                switch (shape.type) {
+                    case "rect":
+                        ctx.strokeRect(shape.x, shape.y, shape.width, shape.height);
+                        break;
+                    case "circle":
+                        ctx.beginPath();
+                        const radius = Math.sqrt(shape.width ** 2 + shape.height ** 2);
+                        ctx.arc(shape.x, shape.y, radius, 0, 2 * Math.PI);
+                        ctx.stroke();
+                        break;
+                    case "line":
+                        ctx.beginPath();
+                        ctx.moveTo(shape.x, shape.y);
+                        ctx.lineTo(shape.x + shape.width, shape.y + shape.height);
+                        ctx.stroke();
+                        break;
+                    case "diamond":
+                        ctx.beginPath();
+                        ctx.moveTo(shape.x + shape.width / 2, shape.y);
+                        ctx.lineTo(shape.x + shape.width, shape.y + shape.height / 2);
+                        ctx.lineTo(shape.x + shape.width / 2, shape.y + shape.height);
+                        ctx.lineTo(shape.x, shape.y + shape.height / 2);
+                        ctx.closePath();
+                        ctx.stroke();
+                        break;
+                }
+            };
+
+            const redrawAll = () => {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.strokeStyle = localStorage.getItem("theme") === "dark" ? "white" : "black";
+                shapesRef.current.forEach(shape => drawShape(shape));
+            };
+
+            const getSelectedShape = (): ShapeType => {
+                const select = document.getElementById('shape-select') as HTMLSelectElement;
+                return (select?.value as ShapeType) || "rect";
+            };
+
+            canvas.addEventListener("mousedown",(e)=>{
+                clicked=true
+                startX=e.clientX;
+                startY=e.clientY;
+            })
+
+            canvas.addEventListener("mouseup",(e)=>{
+                clicked=false;
+                const width = e.clientX - startX;
+                const height = e.clientY - startY;
+                if (width !== 0 || height !== 0) {
+                    const shapeType = getSelectedShape();
+                    shapesRef.current.push({ type: shapeType, x: startX, y: startY, width, height });
+                }
+            })
+            canvas.addEventListener("mousemove",(e)=>{
+
+                if(clicked){
+
+                    let width=e.clientX-startX;
+                    let height=e.clientY-startY;
+                    redrawAll();
+                    const shapeType = getSelectedShape();
+                    drawShape({ type: shapeType, x: startX, y: startY, width, height });
+
+                }
+                
+            })
+
+            const observer = new MutationObserver(() => { redrawAll(); });
+            observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+            return () => observer.disconnect();
         }
-      
-        const observer = new MutationObserver(() => { if(canvasRef.current) { const ctx = canvasRef.current.getContext("2d"); if(ctx) { ctx.clearRect(0,0,canvasRef.current.width,canvasRef.current.height); ctx.strokeStyle = localStorage.getItem("theme") === "dark" ? "white" : "black"; ctx.strokeRect(0,0,100,100); }}});
-        observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
-        return () => observer.disconnect();
       
     }, [canvasRef]);
     
@@ -52,6 +148,19 @@ const Page = () => {
 
   return (
     <div className="w-full h-full relative">
+        <div className="absolute top-4 left-4 z-10">
+            <select
+                id="shape-select"
+                value={selectedShape}
+                onChange={(e) => setSelectedShape(e.target.value as ShapeType)}
+                className="p-2 rounded-lg bg-surface border border-border hover:bg-muted transition-colors cursor-pointer"
+            >
+                <option value="rect">Rectangle</option>
+                <option value="circle">Circle</option>
+                <option value="line">Line</option>
+                <option value="diamond">Diamond</option>
+            </select>
+        </div>
         <button
             onClick={toggleTheme}
             className="absolute top-4 right-4 z-10 p-2 rounded-lg bg-surface border border-border hover:bg-muted transition-colors"
