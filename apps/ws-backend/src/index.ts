@@ -4,7 +4,6 @@ import { prisma } from '@repo/db';
 import http from 'http';
 
 const server = http.createServer((req, res) => {
-  // Simple HTTP endpoint to notify room deletion
   if (req.method === 'POST' && req.url === '/notify-room-deleted') {
     let body = '';
     req.on('data', chunk => {
@@ -35,15 +34,100 @@ const server = http.createServer((req, res) => {
 const wss = new WebSocketServer({ server });
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 
-interface AuthenticatedWebSocket extends WebSocket {
-  userId?: number;
-  roomId?: string;
+// ==================== TYPES ====================
+
+interface Shape {
+  id: string;
+  type: 'rect' | 'circle' | 'line' | 'diamond';
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
-// Map to track all connections by room
+interface RoomState {
+  shapes: Shape[];
+  isDirty: boolean;  // Track if shapes changed since last save
+  lastSaved: number; // Timestamp of last DB save
+  saveTimer?: NodeJS.Timeout;
+}
+
+interface AuthenticatedWebSocket extends WebSocket {
+  userId?: number;
+  rooms: Set<string>;  // User can be in multiple rooms
+}
+
+// ==================== IN-MEMORY STATE ====================
+
+// Map of roomId -> Set of connected clients
 const roomConnections = new Map<string, Set<AuthenticatedWebSocket>>();
 
-// Helper to broadcast message to all clients in a room except sender
+// Map of roomId -> RoomState (shapes array + metadata)
+const roomStates = new Map<string, RoomState>();
+
+const SAVE_INTERVAL = 30000; // 30 seconds
+
+// ==================== DB PERSISTENCE ====================
+
+async function saveRoomToDb(roomId: string, force: boolean = false): Promise<boolean> {
+  const state = roomStates.get(roomId);
+  if (!state) return false;
+  
+  // Skip if not dirty and not forced
+  if (!state.isDirty && !force) return false;
+  
+  try {
+    await prisma.room.update({
+      where: { roomId },
+      data: { shapes: state.shapes as unknown as object }
+    });
+    
+    state.isDirty = false;
+    state.lastSaved = Date.now();
+    console.log(`Saved room ${roomId} to DB (${state.shapes.length} shapes)`);
+    return true;
+  } catch (error) {
+    console.error(`Failed to save room ${roomId}:`, error);
+    return false;
+  }
+}
+
+async function loadRoomFromDb(roomId: string): Promise<Shape[]> {
+  try {
+    const room = await prisma.room.findUnique({
+      where: { roomId },
+      select: { shapes: true }
+    });
+    
+    if (room?.shapes && Array.isArray(room.shapes)) {
+      return room.shapes as unknown as Shape[];
+    }
+    return [];
+  } catch (error) {
+    console.error(`Failed to load room ${roomId}:`, error);
+    return [];
+  }
+}
+
+function startAutoSave(roomId: string) {
+  const state = roomStates.get(roomId);
+  if (!state || state.saveTimer) return;
+  
+  state.saveTimer = setInterval(() => {
+    saveRoomToDb(roomId);
+  }, SAVE_INTERVAL);
+}
+
+function stopAutoSave(roomId: string) {
+  const state = roomStates.get(roomId);
+  if (state?.saveTimer) {
+    clearInterval(state.saveTimer);
+    state.saveTimer = undefined;
+  }
+}
+
+// ==================== BROADCAST HELPERS ====================
+
 function broadcastToRoom(roomId: string, message: any, excludeWs?: AuthenticatedWebSocket) {
   const clients = roomConnections.get(roomId);
   if (!clients) return;
@@ -56,7 +140,6 @@ function broadcastToRoom(roomId: string, message: any, excludeWs?: Authenticated
   });
 }
 
-// Helper to broadcast to all clients in a room including sender
 function broadcastToRoomAll(roomId: string, message: any) {
   const clients = roomConnections.get(roomId);
   if (!clients) return;
@@ -69,21 +152,212 @@ function broadcastToRoomAll(roomId: string, message: any) {
   });
 }
 
-// Export function to notify room deletion from external sources
 function notifyRoomDeleted(roomId: string) {
   broadcastToRoomAll(roomId, { type: 'room-deleted', roomId });
-  // Clean up room connections
+  stopAutoSave(roomId);
+  roomStates.delete(roomId);
   roomConnections.delete(roomId);
 }
+
+// ==================== ROOM MANAGEMENT ====================
+
+async function handleJoinRoom(ws: AuthenticatedWebSocket, roomId: string) {
+  // Verify room exists
+  const room = await prisma.room.findUnique({
+    where: { roomId }
+  });
+
+  if (!room) {
+    ws.send(JSON.stringify({ type: 'error', message: 'Room not found' }));
+    return;
+  }
+
+  // Verify user is a member
+  const isMember = await prisma.roomMember.findUnique({
+    where: {
+      userId_roomId: {
+        userId: ws.userId!,
+        roomId: room.id
+      }
+    }
+  });
+
+  if (!isMember && room.userId !== ws.userId) {
+    ws.send(JSON.stringify({ type: 'error', message: 'You are not a member of this room' }));
+    return;
+  }
+
+  // Add to room connections
+  ws.rooms.add(roomId);
+  if (!roomConnections.has(roomId)) {
+    roomConnections.set(roomId, new Set());
+  }
+  roomConnections.get(roomId)!.add(ws);
+
+  // Initialize room state if first user
+  if (!roomStates.has(roomId)) {
+    const shapes = await loadRoomFromDb(roomId);
+    roomStates.set(roomId, {
+      shapes,
+      isDirty: false,
+      lastSaved: Date.now()
+    });
+    startAutoSave(roomId);
+  }
+
+  const state = roomStates.get(roomId)!;
+
+  console.log(`User ${ws.userId} joined room ${roomId}`);
+  
+  // Send current shapes to the joining user
+  ws.send(JSON.stringify({ 
+    type: 'joined-room', 
+    roomId,
+    shapes: state.shapes
+  }));
+
+  // Notify others
+  broadcastToRoom(roomId, {
+    type: 'user-joined',
+    userId: ws.userId
+  }, ws);
+}
+
+async function handleLeaveRoom(ws: AuthenticatedWebSocket, roomId: string) {
+  if (!ws.rooms.has(roomId)) return;
+
+  ws.rooms.delete(roomId);
+  
+  const clients = roomConnections.get(roomId);
+  if (clients) {
+    clients.delete(ws);
+    
+    // If room is now empty, save and cleanup
+    if (clients.size === 0) {
+      await saveRoomToDb(roomId, true);
+      stopAutoSave(roomId);
+      roomStates.delete(roomId);
+      roomConnections.delete(roomId);
+      console.log(`Room ${roomId} is now empty, saved and cleaned up`);
+    }
+  }
+
+  // Notify others
+  broadcastToRoom(roomId, {
+    type: 'user-left',
+    userId: ws.userId
+  }, ws);
+
+  ws.send(JSON.stringify({ type: 'left-room', roomId }));
+}
+
+// ==================== SHAPE OPERATIONS ====================
+
+function handleAddShape(ws: AuthenticatedWebSocket, roomId: string, shape: Shape) {
+  if (!ws.rooms.has(roomId)) {
+    ws.send(JSON.stringify({ type: 'error', message: 'Not in this room' }));
+    return;
+  }
+
+  const state = roomStates.get(roomId);
+  if (!state) return;
+
+  state.shapes.push(shape);
+  state.isDirty = true;
+
+  // Broadcast to all including sender for consistency
+  broadcastToRoomAll(roomId, {
+    type: 'shape-added',
+    roomId,
+    shape
+  });
+}
+
+function handleRemoveShape(ws: AuthenticatedWebSocket, roomId: string, shapeId: string) {
+  if (!ws.rooms.has(roomId)) {
+    ws.send(JSON.stringify({ type: 'error', message: 'Not in this room' }));
+    return;
+  }
+
+  const state = roomStates.get(roomId);
+  if (!state) return;
+
+  const index = state.shapes.findIndex(s => s.id === shapeId);
+  if (index !== -1) {
+    state.shapes.splice(index, 1);
+    state.isDirty = true;
+
+    broadcastToRoomAll(roomId, {
+      type: 'shape-removed',
+      roomId,
+      shapeId
+    });
+  }
+}
+
+function handleUpdateShape(ws: AuthenticatedWebSocket, roomId: string, shape: Shape) {
+  if (!ws.rooms.has(roomId)) {
+    ws.send(JSON.stringify({ type: 'error', message: 'Not in this room' }));
+    return;
+  }
+
+  const state = roomStates.get(roomId);
+  if (!state) return;
+
+  const index = state.shapes.findIndex(s => s.id === shape.id);
+  if (index !== -1) {
+    state.shapes[index] = shape;
+    state.isDirty = true;
+
+    broadcastToRoom(roomId, {
+      type: 'shape-updated',
+      roomId,
+      shape
+    }, ws);  // Exclude sender to avoid flicker
+  }
+}
+
+function handleSyncShapes(ws: AuthenticatedWebSocket, roomId: string, shapes: Shape[]) {
+  if (!ws.rooms.has(roomId)) {
+    ws.send(JSON.stringify({ type: 'error', message: 'Not in this room' }));
+    return;
+  }
+
+  const state = roomStates.get(roomId);
+  if (!state) return;
+
+  state.shapes = shapes;
+  state.isDirty = true;
+
+  broadcastToRoom(roomId, {
+    type: 'shapes-synced',
+    roomId,
+    shapes
+  }, ws);
+}
+
+async function handleManualSave(ws: AuthenticatedWebSocket, roomId: string) {
+  if (!ws.rooms.has(roomId)) {
+    ws.send(JSON.stringify({ type: 'error', message: 'Not in this room' }));
+    return;
+  }
+
+  const saved = await saveRoomToDb(roomId, true);
+  ws.send(JSON.stringify({ 
+    type: 'save-result', 
+    roomId,
+    success: saved 
+  }));
+}
+
+// ==================== WEBSOCKET CONNECTION HANDLER ====================
 
 wss.on('connection', (ws: AuthenticatedWebSocket, req) => {
   console.log('New connection attempt');
   
-  // Extract token from query parameters
   const url = new URL(req.url || '', `http://${req.headers.host}`);
   const token = url.searchParams.get('token');
   
-  // Validate token before proceeding
   if (!token) {
     console.log('Connection rejected: No token provided');
     ws.close(1008, 'No token provided');
@@ -93,135 +367,50 @@ wss.on('connection', (ws: AuthenticatedWebSocket, req) => {
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as { userId: number };
     ws.userId = decoded.userId;
+    ws.rooms = new Set();
     console.log(`Client connected: User ${ws.userId}`);
 
     ws.on('message', async (data) => {
       try {
         const message = JSON.parse(data.toString());
-        console.log('Received message:', message);
+        console.log('Received message:', message.type);
 
         switch (message.type) {
-          case 'join-room': {
-            const { roomId } = message;
-            
-            // Verify user has access to this room
-            const room = await prisma.room.findUnique({
-              where: { roomId }
-            });
-
-            if (!room) {
-              ws.send(JSON.stringify({ type: 'error', message: 'Room not found' }));
-              return;
-            }
-
-            const isMember = await prisma.roomMember.findUnique({
-              where: {
-                userId_roomId: {
-                  userId: ws.userId!,
-                  roomId: room.id
-                }
-              }
-            });
-
-            if (!isMember) {
-              ws.send(JSON.stringify({ type: 'error', message: 'You are not a member of this room' }));
-              return;
-            }
-
-            // Add to room connections
-            ws.roomId = roomId;
-            if (!roomConnections.has(roomId)) {
-              roomConnections.set(roomId, new Set());
-            }
-            roomConnections.get(roomId)!.add(ws);
-
-            console.log(`User ${ws.userId} joined room ${roomId}`);
-            ws.send(JSON.stringify({ type: 'joined-room', roomId }));
-
-            // Notify others in room
-            broadcastToRoom(roomId, {
-              type: 'user-joined',
-              userId: ws.userId
-            }, ws);
-            
+          case 'join-room':
+            await handleJoinRoom(ws, message.roomId);
             break;
-          }
 
-          case 'send-message': {
-            if (!ws.roomId) {
-              ws.send(JSON.stringify({ type: 'error', message: 'Not in a room' }));
-              return;
-            }
-
-            const { message: messageText, roomId } = message;
-
-            // Save message to database
-            const room = await prisma.room.findUnique({
-              where: { roomId }
-            });
-
-            if (!room) {
-              ws.send(JSON.stringify({ type: 'error', message: 'Room not found' }));
-              return;
-            }
-
-            const savedMessage = await prisma.chat.create({
-              data: {
-                message: messageText,
-                userId: ws.userId!,
-                roomId: room.id
-              },
-              include: {
-                user: {
-                  select: {
-                    id: true,
-                    name: true,
-                    email: true
-                  }
-                }
-              }
-            });
-
-            // Broadcast to all clients in the room including sender
-            const broadcastMessage = {
-              type: 'new-message',
-              message: {
-                id: savedMessage.id,
-                message: savedMessage.message,
-                senderId: savedMessage.user.id,
-                senderName: savedMessage.user.name,
-                senderEmail: savedMessage.user.email,
-                createdAt: savedMessage.createdAt.toISOString()
-              }
-            };
-
-            broadcastToRoomAll(roomId, broadcastMessage);
-            
+          case 'leave-room':
+            await handleLeaveRoom(ws, message.roomId);
             break;
-          }
 
-          case 'leave-room': {
-            if (ws.roomId) {
-              const roomId = ws.roomId;
-              const clients = roomConnections.get(roomId);
-              if (clients) {
-                clients.delete(ws);
-                if (clients.size === 0) {
-                  roomConnections.delete(roomId);
-                }
-              }
-              
-              // Notify others
-              broadcastToRoom(roomId, {
-                type: 'user-left',
-                userId: ws.userId
-              }, ws);
-
-              ws.roomId = undefined;
-              ws.send(JSON.stringify({ type: 'left-room' }));
-            }
+          case 'add-shape':
+            handleAddShape(ws, message.roomId, message.shape);
             break;
-          }
+
+          case 'remove-shape':
+            handleRemoveShape(ws, message.roomId, message.shapeId);
+            break;
+
+          case 'update-shape':
+            handleUpdateShape(ws, message.roomId, message.shape);
+            break;
+
+          case 'sync-shapes':
+            handleSyncShapes(ws, message.roomId, message.shapes);
+            break;
+
+          case 'save':
+            await handleManualSave(ws, message.roomId);
+            break;
+
+          case 'unload':
+            // Browser is closing, save all rooms user is in
+            for (const roomId of ws.rooms) {
+              await saveRoomToDb(roomId, true);
+            }
+            ws.send(JSON.stringify({ type: 'unload-ack' }));
+            break;
 
           default:
             ws.send(JSON.stringify({ type: 'error', message: 'Unknown message type' }));
@@ -232,24 +421,12 @@ wss.on('connection', (ws: AuthenticatedWebSocket, req) => {
       }
     });
 
-    ws.on('close', () => {
+    ws.on('close', async () => {
       console.log(`Client disconnected: User ${ws.userId}`);
       
-      // Remove from room connections
-      if (ws.roomId) {
-        const clients = roomConnections.get(ws.roomId);
-        if (clients) {
-          clients.delete(ws);
-          if (clients.size === 0) {
-            roomConnections.delete(ws.roomId);
-          }
-        }
-        
-        // Notify others
-        broadcastToRoom(ws.roomId, {
-          type: 'user-left',
-          userId: ws.userId
-        }, ws);
+      // Leave all rooms and save if needed
+      for (const roomId of ws.rooms) {
+        await handleLeaveRoom(ws, roomId);
       }
     });
 

@@ -17,8 +17,7 @@ router.get("/my-rooms", authMiddleware, async (req, res) => {
       include: {
         _count: {
           select: {
-            members: true,
-            chats: true
+            members: true
           }
         }
       },
@@ -32,7 +31,6 @@ router.get("/my-rooms", authMiddleware, async (req, res) => {
         id: room.id,
         roomId: room.roomId,
         memberCount: room._count.members,
-        messageCount: room._count.chats,
         createdAt: room.createdAt
       }))
     });
@@ -52,6 +50,7 @@ router.post("/create-room", authMiddleware, async (req, res) => {
     const room = await prisma.room.create({
       data: {
         userId: user.userId,
+        shapes: []
       }
     });
 
@@ -273,22 +272,10 @@ router.delete("/delete-room/:roomId", authMiddleware, async (req, res) => {
       return res.status(403).json({ error: "Only the room admin can delete the room" });
     }
 
-    // Delete the room (cascading deletes will handle RoomMember and Chat entries)
+    // Delete the room (cascading deletes will handle RoomMember entries)
     await prisma.room.delete({
       where: { roomId }
     });
-
-    // Notify WebSocket server to inform connected clients
-    try {
-      await fetch('http://localhost:8080/notify-room-deleted', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomId })
-      });
-    } catch (wsError) {
-      console.error('Failed to notify WebSocket server:', wsError);
-      // Don't fail the delete operation if notification fails
-    }
 
     res.status(200).json({
       message: "Room deleted successfully",
