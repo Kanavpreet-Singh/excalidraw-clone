@@ -29,6 +29,9 @@
   --foreground: #0f172a;
   --muted-foreground: #64748b;
 
+  /* Canvas */
+  --canvas-stroke: #0f172a;
+
   /* UI */
   --border: #e2e8f0;
   --input: #e2e8f0;
@@ -53,6 +56,9 @@
   /* Text */
   --foreground: #f1f5f9;
   --muted-foreground: #94a3b8;
+
+  /* Canvas */
+  --canvas-stroke: #f1f5f9;
 
   /* UI */
   --border: #334155;
