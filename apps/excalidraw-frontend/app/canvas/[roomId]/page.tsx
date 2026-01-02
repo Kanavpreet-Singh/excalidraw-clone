@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { config } from '@/config'
 
-type ShapeType = "rect" | "circle" | "line" | "arrow" | "diamond" | "text" | "eraser";
+type ShapeType = "select" | "rect" | "circle" | "line" | "arrow" | "diamond" | "text" | "eraser";
 
 interface Shape {
     id: string;
@@ -35,7 +35,7 @@ const Page = () => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const wsRef = useRef<WebSocket | null>(null);
     const [isDark, setIsDark] = useState(false);
-    const [selectedShape, setSelectedShape] = useState<ShapeType>("rect");
+    const [selectedShape, setSelectedShape] = useState<ShapeType>("select");
     const shapesRef = useRef<Shape[]>([]);
     const [toast, setToast] = useState({ message: '', show: false });
     const [isConnected, setIsConnected] = useState(false);
@@ -50,6 +50,17 @@ const Page = () => {
     
     // Ref for eraser function to avoid stale closure
     const eraseShapeAtRef = useRef<(x: number, y: number) => boolean>(() => false);
+    
+    // Drag and drop state refs
+    const dragStateRef = useRef<{
+        isDragging: boolean;
+        shapeId: string | null;
+        offsetX: number;
+        offsetY: number;
+    }>({ isDragging: false, shapeId: null, offsetX: 0, offsetY: 0 });
+    
+    // Find shape at position (returns shape or null)
+    const findShapeAtRef = useRef<(x: number, y: number) => Shape | null>(() => null);
 
     // Handle canvas click for text mode
     const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -421,6 +432,45 @@ const Page = () => {
     
     // Keep ref in sync
     eraseShapeAtRef.current = eraseShapeAt;
+    
+    // Find shape at position (for drag and drop)
+    const findShapeAt = (x: number, y: number): Shape | null => {
+        // Check in reverse order - top shapes first
+        for (let i = shapesRef.current.length - 1; i >= 0; i--) {
+            const shape = shapesRef.current[i];
+            if (isPointInShape(x, y, shape, 15)) {
+                return shape;
+            }
+        }
+        return null;
+    };
+    
+    // Keep ref in sync
+    findShapeAtRef.current = findShapeAt;
+    
+    // Update shape position (for drag and drop)
+    const updateShapePosition = (shapeId: string, newX: number, newY: number) => {
+        const idx = shapesRef.current.findIndex(s => s.id === shapeId);
+        if (idx !== -1) {
+            shapesRef.current[idx] = {
+                ...shapesRef.current[idx],
+                x: newX,
+                y: newY
+            };
+            redrawCanvas();
+        }
+    };
+    
+    // Send shape update to WebSocket
+    const sendShapeUpdate = (shape: Shape) => {
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({
+                type: 'update-shape',
+                roomId,
+                shape
+            }));
+        }
+    };
 
     // Handle text submission
     const handleTextSubmit = () => {
@@ -521,6 +571,21 @@ const Page = () => {
         const handleMouseDown = (e: MouseEvent) => {
             const shapeType = getSelectedShape();
             
+            // Select mode - start dragging if clicking on a shape
+            if (shapeType === 'select') {
+                const shape = findShapeAtRef.current(e.clientX, e.clientY);
+                if (shape) {
+                    dragStateRef.current = {
+                        isDragging: true,
+                        shapeId: shape.id,
+                        offsetX: e.clientX - shape.x,
+                        offsetY: e.clientY - shape.y
+                    };
+                    canvas.style.cursor = 'grabbing';
+                }
+                return;
+            }
+            
             // Text mode is handled by React event handler
             if (shapeType === 'text') {
                 return;
@@ -539,6 +604,27 @@ const Page = () => {
         const handleMouseUp = (e: MouseEvent) => {
             clicked = false;
             const shapeType = getSelectedShape();
+            
+            // Select mode - end dragging
+            if (shapeType === 'select') {
+                if (dragStateRef.current.isDragging && dragStateRef.current.shapeId) {
+                    // Find the shape and send update
+                    const shape = shapesRef.current.find(s => s.id === dragStateRef.current.shapeId);
+                    if (shape) {
+                        // Send WebSocket update
+                        if (wsRef.current?.readyState === WebSocket.OPEN) {
+                            wsRef.current.send(JSON.stringify({
+                                type: 'update-shape',
+                                roomId,
+                                shape
+                            }));
+                        }
+                    }
+                }
+                dragStateRef.current = { isDragging: false, shapeId: null, offsetX: 0, offsetY: 0 };
+                canvas.style.cursor = 'default';
+                return;
+            }
             
             // Text mode is handled differently (click to place)
             if (shapeType === 'text') return;
@@ -573,8 +659,33 @@ const Page = () => {
         };
 
         const handleMouseMove = (e: MouseEvent) => {
+            const shapeType = getSelectedShape();
+            
+            // Select mode - handle dragging
+            if (shapeType === 'select') {
+                if (dragStateRef.current.isDragging && dragStateRef.current.shapeId) {
+                    const newX = e.clientX - dragStateRef.current.offsetX;
+                    const newY = e.clientY - dragStateRef.current.offsetY;
+                    
+                    // Update shape position
+                    const idx = shapesRef.current.findIndex(s => s.id === dragStateRef.current.shapeId);
+                    if (idx !== -1) {
+                        shapesRef.current[idx] = {
+                            ...shapesRef.current[idx],
+                            x: newX,
+                            y: newY
+                        };
+                        redrawCanvas();
+                    }
+                } else {
+                    // Change cursor when hovering over a shape
+                    const shape = findShapeAtRef.current(e.clientX, e.clientY);
+                    canvas.style.cursor = shape ? 'grab' : 'default';
+                }
+                return;
+            }
+            
             if (clicked) {
-                const shapeType = getSelectedShape();
                 // Don't draw preview for text mode
                 if (shapeType === 'text') return;
                 
@@ -621,6 +732,12 @@ const Page = () => {
             <div className="absolute top-4 left-4 z-10 flex flex-col gap-1 p-2 bg-surface border border-border rounded-lg shadow-lg">
                 {/* Tool buttons */}
                 {[
+                    { type: 'select' as ShapeType, label: 'Select & Move', icon: (
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/>
+                            <path d="M13 13l6 6"/>
+                        </svg>
+                    )},
                     { type: 'rect' as ShapeType, label: 'Rectangle', icon: (
                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <rect x="3" y="3" width="18" height="18" rx="2"/>
@@ -709,6 +826,7 @@ const Page = () => {
                 onChange={() => {}}
                 className="hidden"
             >
+                <option value="select">Select</option>
                 <option value="rect">Rectangle</option>
                 <option value="circle">Circle</option>
                 <option value="line">Line</option>
@@ -769,7 +887,7 @@ const Page = () => {
             className="w-full h-full block" 
             ref={canvasRef}
             onClick={handleCanvasClick}
-            style={{ cursor: selectedShape === 'text' ? 'text' : selectedShape === 'eraser' ? 'not-allowed' : 'crosshair' }}
+            style={{ cursor: selectedShape === 'select' ? 'default' : selectedShape === 'text' ? 'text' : selectedShape === 'eraser' ? 'not-allowed' : 'crosshair' }}
         ></canvas>
             
             {/* Text input overlay */}
