@@ -8,7 +8,7 @@ export default function Footer() {
           {/* Brand */}
           <div className="col-span-1">
             <h3 className="text-lg font-bold text-foreground mb-4">
-              ExcaliGen
+              Structura
             </h3>
             <p className="text-muted-foreground text-sm">
               Create beautiful diagrams and collaborate in real-time with your team.
@@ -142,7 +142,7 @@ export default function Footer() {
         {/* Bottom */}
         <div className="mt-12 pt-8 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-sm text-muted-foreground">
-            © {new Date().getFullYear()} ExcaliGen. All rights reserved.
+            © {new Date().getFullYear()} Structura. All rights reserved.
           </p>
           <div className="flex items-center gap-6">
             <Link

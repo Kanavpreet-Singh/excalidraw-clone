@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import logo from "@/public/logo.png";
 
 interface User {
   name: string;
@@ -144,14 +145,14 @@ export default function Navbar() {
           <div className="flex items-center gap-3">
             <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
               <Image
-                src="/logo.png"
-                alt="ExcaliGen Logo"
+                src={logo}
+                alt="Structura Logo"
                 width={40}
                 height={40}
                 className="rounded-lg"
               />
               <span className="text-xl font-bold text-foreground">
-                ExcaliGen
+                Structura
               </span>
             </Link>
           </div>

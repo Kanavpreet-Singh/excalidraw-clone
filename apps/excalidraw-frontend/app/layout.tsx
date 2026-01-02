@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ExcaliGen - Collaborative Diagram Creator",
+  title: "Structura - Collaborative Diagram Creator",
   description: "Create beautiful diagrams and collaborate in real-time with your team",
 };
 

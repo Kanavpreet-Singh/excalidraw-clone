@@ -13,7 +13,7 @@ export default function Home() {
                   <span className="text-primary">Collaboratively</span>
                 </h1>
                 <p className="text-lg md:text-xl text-muted-foreground max-w-xl">
-                  ExcaliGen is a powerful, real-time collaborative whiteboard tool
+                  Structura is a powerful, real-time collaborative whiteboard tool
                   for creating stunning diagrams, flowcharts, and visual content.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-4">
@@ -40,7 +40,7 @@ export default function Home() {
                     playsInline
                     className="w-full h-full object-cover rounded-lg"
                   >
-                    <source src="/ExcaliGen_Ad_Generation.mp4" type="video/mp4" />
+                    <source src="/Structura_Ad_Generation.mp4" type="video/mp4" />
                     Your browser does not support the video tag.
                   </video>
                 </div>
@@ -150,7 +150,7 @@ export default function Home() {
             </h2>
             <p className="text-lg text-muted-foreground mb-8">
               Join thousands of users who are already creating amazing diagrams with
-              ExcaliGen.
+              Structura.
             </p>
             <Link
               href="/signup"

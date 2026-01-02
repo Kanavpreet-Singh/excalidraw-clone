@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { config } from "@/config";
+import logo from "@/public/logo.png";
 
 export default function SignUp() {
   const router = useRouter();
@@ -77,15 +78,15 @@ export default function SignUp() {
               <div className="flex items-center gap-4">
                 <div className="relative w-16 h-16">
                   <Image
-                    src="/logo.png"
-                    alt="ExcaliGen Logo"
+                    src={logo}
+                    alt="Structura Logo"
                     width={64}
                     height={64}
                     className="rounded-xl"
                   />
                 </div>
                 <div>
-                  <h3 className="text-2xl font-bold text-foreground">ExcaliGen</h3>
+                  <h3 className="text-2xl font-bold text-foreground">Structura</h3>
                   <p className="text-sm text-muted-foreground">Collaborative Diagramming</p>
                 </div>
               </div>
@@ -96,7 +97,7 @@ export default function SignUp() {
                   Start Creating Together
                 </h4>
                 <p className="text-muted-foreground leading-relaxed">
-                  Join thousands of teams using ExcaliGen to create stunning diagrams, 
+                  Join thousands of teams using Structura to create stunning diagrams, 
                   flowcharts, and visual content in real-time. Experience the power of 
                   collaborative whiteboarding.
                 </p>
