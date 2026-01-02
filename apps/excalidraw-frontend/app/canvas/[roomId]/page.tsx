@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { config } from '@/config'
 
-type ShapeType = "rect" | "circle" | "line" | "diamond";
+type ShapeType = "rect" | "circle" | "line" | "arrow" | "diamond" | "text" | "eraser";
 
 interface Shape {
     id: string;
@@ -13,6 +13,9 @@ interface Shape {
     y: number;
     width: number;
     height: number;
+    // Text-specific properties
+    text?: string;
+    fontSize?: number;
 }
 
 // Toast component (simple inline implementation)
@@ -37,6 +40,25 @@ const Page = () => {
     const [toast, setToast] = useState({ message: '', show: false });
     const [isConnected, setIsConnected] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    
+    // Text input state
+    const [isTextMode, setIsTextMode] = useState(false);
+    const [textInputPos, setTextInputPos] = useState<{ x: number; y: number } | null>(null);
+    const [textValue, setTextValue] = useState('');
+    const [fontSize, setFontSize] = useState(20);
+    const textInputRef = useRef<HTMLInputElement>(null);
+    
+    // Ref for eraser function to avoid stale closure
+    const eraseShapeAtRef = useRef<(x: number, y: number) => boolean>(() => false);
+
+    // Handle canvas click for text mode
+    const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+        if (selectedShape === 'text' && !textInputPos) {
+            e.preventDefault();
+            e.stopPropagation();
+            setTextInputPos({ x: e.clientX, y: e.clientY });
+        }
+    };
 
     // Generate unique ID for shapes
     const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -209,6 +231,35 @@ const Page = () => {
                 ctx.lineTo(shape.x + shape.width, shape.y + shape.height);
                 ctx.stroke();
                 break;
+            case "arrow": {
+                // Draw the line
+                ctx.beginPath();
+                ctx.moveTo(shape.x, shape.y);
+                ctx.lineTo(shape.x + shape.width, shape.y + shape.height);
+                ctx.stroke();
+                
+                // Draw arrowhead
+                const angle = Math.atan2(shape.height, shape.width);
+                const headLength = 15;
+                const headAngle = Math.PI / 6; // 30 degrees
+                
+                const endX = shape.x + shape.width;
+                const endY = shape.y + shape.height;
+                
+                ctx.beginPath();
+                ctx.moveTo(endX, endY);
+                ctx.lineTo(
+                    endX - headLength * Math.cos(angle - headAngle),
+                    endY - headLength * Math.sin(angle - headAngle)
+                );
+                ctx.moveTo(endX, endY);
+                ctx.lineTo(
+                    endX - headLength * Math.cos(angle + headAngle),
+                    endY - headLength * Math.sin(angle + headAngle)
+                );
+                ctx.stroke();
+                break;
+            }
             case "diamond":
                 ctx.beginPath();
                 ctx.moveTo(shape.x + shape.width / 2, shape.y);
@@ -218,7 +269,195 @@ const Page = () => {
                 ctx.closePath();
                 ctx.stroke();
                 break;
+            case "text":
+                if (shape.text) {
+                    const textFontSize = shape.fontSize || 20;
+                    ctx.font = `${textFontSize}px sans-serif`;
+                    ctx.fillStyle = localStorage.getItem("theme") === "dark" ? "white" : "black";
+                    ctx.fillText(shape.text, shape.x, shape.y);
+                }
+                break;
         }
+    };
+
+    // Check if a point is inside/near a shape (for eraser hit detection)
+    const isPointInShape = (px: number, py: number, shape: Shape, threshold: number = 10): boolean => {
+        switch (shape.type) {
+            case "rect": {
+                // Normalize rect coordinates (handle negative width/height)
+                const x = shape.width < 0 ? shape.x + shape.width : shape.x;
+                const y = shape.height < 0 ? shape.y + shape.height : shape.y;
+                const w = Math.abs(shape.width);
+                const h = Math.abs(shape.height);
+                
+                // Check if point is near any edge of the rectangle
+                const nearLeft = Math.abs(px - x) < threshold && py >= y - threshold && py <= y + h + threshold;
+                const nearRight = Math.abs(px - (x + w)) < threshold && py >= y - threshold && py <= y + h + threshold;
+                const nearTop = Math.abs(py - y) < threshold && px >= x - threshold && px <= x + w + threshold;
+                const nearBottom = Math.abs(py - (y + h)) < threshold && px >= x - threshold && px <= x + w + threshold;
+                
+                return nearLeft || nearRight || nearTop || nearBottom;
+            }
+            case "circle": {
+                const radius = Math.sqrt(shape.width ** 2 + shape.height ** 2);
+                const distance = Math.sqrt((px - shape.x) ** 2 + (py - shape.y) ** 2);
+                // Check if point is near the circle's circumference
+                return Math.abs(distance - radius) < threshold;
+            }
+            case "line":
+            case "arrow": {
+                // Distance from point to line segment
+                const x1 = shape.x;
+                const y1 = shape.y;
+                const x2 = shape.x + shape.width;
+                const y2 = shape.y + shape.height;
+                
+                const A = px - x1;
+                const B = py - y1;
+                const C = x2 - x1;
+                const D = y2 - y1;
+                
+                const dot = A * C + B * D;
+                const lenSq = C * C + D * D;
+                let param = lenSq !== 0 ? dot / lenSq : -1;
+                
+                let xx, yy;
+                if (param < 0) {
+                    xx = x1;
+                    yy = y1;
+                } else if (param > 1) {
+                    xx = x2;
+                    yy = y2;
+                } else {
+                    xx = x1 + param * C;
+                    yy = y1 + param * D;
+                }
+                
+                const distance = Math.sqrt((px - xx) ** 2 + (py - yy) ** 2);
+                return distance < threshold;
+            }
+            case "diamond": {
+                // Check if point is near any edge of the diamond
+                const cx = shape.x + shape.width / 2;
+                const cy = shape.y + shape.height / 2;
+                const top = { x: shape.x + shape.width / 2, y: shape.y };
+                const right = { x: shape.x + shape.width, y: shape.y + shape.height / 2 };
+                const bottom = { x: shape.x + shape.width / 2, y: shape.y + shape.height };
+                const left = { x: shape.x, y: shape.y + shape.height / 2 };
+                
+                // Check distance to each edge
+                const edges = [
+                    [top, right], [right, bottom], [bottom, left], [left, top]
+                ];
+                
+                for (const [p1, p2] of edges) {
+                    const A = px - p1.x;
+                    const B = py - p1.y;
+                    const C = p2.x - p1.x;
+                    const D = p2.y - p1.y;
+                    
+                    const dot = A * C + B * D;
+                    const lenSq = C * C + D * D;
+                    let param = lenSq !== 0 ? dot / lenSq : -1;
+                    
+                    let xx, yy;
+                    if (param < 0) {
+                        xx = p1.x;
+                        yy = p1.y;
+                    } else if (param > 1) {
+                        xx = p2.x;
+                        yy = p2.y;
+                    } else {
+                        xx = p1.x + param * C;
+                        yy = p1.y + param * D;
+                    }
+                    
+                    const distance = Math.sqrt((px - xx) ** 2 + (py - yy) ** 2);
+                    if (distance < threshold) return true;
+                }
+                return false;
+            }
+            case "text": {
+                if (!shape.text) return false;
+                const textFontSize = shape.fontSize || 20;
+                // Approximate text bounding box
+                const textWidth = shape.text.length * textFontSize * 0.6; // rough estimate
+                const textHeight = textFontSize;
+                
+                return px >= shape.x - threshold && 
+                       px <= shape.x + textWidth + threshold &&
+                       py >= shape.y - textHeight - threshold && 
+                       py <= shape.y + threshold;
+            }
+            default:
+                return false;
+        }
+    };
+
+    // Erase shape at position
+    const eraseShapeAt = (x: number, y: number) => {
+        // Find shape at position (check in reverse order - top shapes first)
+        for (let i = shapesRef.current.length - 1; i >= 0; i--) {
+            const shape = shapesRef.current[i];
+            if (isPointInShape(x, y, shape)) {
+                // Remove the shape
+                const shapeId = shape.id;
+                shapesRef.current.splice(i, 1);
+                redrawCanvas();
+                
+                // Notify WebSocket server
+                if (wsRef.current?.readyState === WebSocket.OPEN) {
+                    wsRef.current.send(JSON.stringify({
+                        type: 'remove-shape',
+                        roomId,
+                        shapeId
+                    }));
+                }
+                return true; // Only erase one shape at a time
+            }
+        }
+        return false;
+    };
+    
+    // Keep ref in sync
+    eraseShapeAtRef.current = eraseShapeAt;
+
+    // Handle text submission
+    const handleTextSubmit = () => {
+        if (textInputPos && textValue.trim()) {
+            const newShape: Shape = {
+                id: generateId(),
+                type: 'text',
+                x: textInputPos.x,
+                y: textInputPos.y,
+                width: 0,
+                height: 0,
+                text: textValue,
+                fontSize: fontSize
+            };
+            
+            shapesRef.current.push(newShape);
+            redrawCanvas();
+            
+            // Publish text shape to WebSocket server
+            if (wsRef.current?.readyState === WebSocket.OPEN) {
+                wsRef.current.send(JSON.stringify({
+                    type: 'add-shape',
+                    roomId,
+                    shape: newShape
+                }));
+            }
+        }
+        
+        // Reset text input state
+        setTextInputPos(null);
+        setTextValue('');
+    };
+
+    // Cancel text input
+    const handleTextCancel = () => {
+        setTextInputPos(null);
+        setTextValue('');
     };
 
     // Manual save function
@@ -280,6 +519,18 @@ const Page = () => {
         };
 
         const handleMouseDown = (e: MouseEvent) => {
+            const shapeType = getSelectedShape();
+            
+            // Text mode is handled by React event handler
+            if (shapeType === 'text') {
+                return;
+            }
+            
+            // Eraser mode - erase on mouse down
+            if (shapeType === 'eraser') {
+                eraseShapeAtRef.current(e.clientX, e.clientY);
+            }
+            
             clicked = true;
             startX = e.clientX;
             startY = e.clientY;
@@ -287,11 +538,18 @@ const Page = () => {
 
         const handleMouseUp = (e: MouseEvent) => {
             clicked = false;
+            const shapeType = getSelectedShape();
+            
+            // Text mode is handled differently (click to place)
+            if (shapeType === 'text') return;
+            
+            // Eraser mode doesn't create shapes
+            if (shapeType === 'eraser') return;
+            
             const width = e.clientX - startX;
             const height = e.clientY - startY;
             
             if (width !== 0 || height !== 0) {
-                const shapeType = getSelectedShape();
                 const newShape: Shape = {
                     id: generateId(),
                     type: shapeType,
@@ -316,11 +574,20 @@ const Page = () => {
 
         const handleMouseMove = (e: MouseEvent) => {
             if (clicked) {
+                const shapeType = getSelectedShape();
+                // Don't draw preview for text mode
+                if (shapeType === 'text') return;
+                
+                // Eraser mode - continuously erase while dragging
+                if (shapeType === 'eraser') {
+                    eraseShapeAtRef.current(e.clientX, e.clientY);
+                    return;
+                }
+                
                 const width = e.clientX - startX;
                 const height = e.clientY - startY;
                 redrawCanvas();
                 ctx.strokeStyle = localStorage.getItem("theme") === "dark" ? "white" : "black";
-                const shapeType = getSelectedShape();
                 drawShape(ctx, { id: '', type: shapeType, x: startX, y: startY, width, height });
             }
         };
@@ -351,19 +618,105 @@ const Page = () => {
                 <span className="text-muted-foreground">{isConnected ? 'Connected' : 'Disconnected'}</span>
             </div>
 
-            <div className="absolute top-4 left-4 z-10">
-                <select
-                    id="shape-select"
-                    value={selectedShape}
-                    onChange={(e) => setSelectedShape(e.target.value as ShapeType)}
-                    className="p-2 rounded-lg bg-surface border border-border hover:bg-muted transition-colors cursor-pointer"
-                >
-                    <option value="rect">Rectangle</option>
-                    <option value="circle">Circle</option>
-                    <option value="line">Line</option>
-                    <option value="diamond">Diamond</option>
-                </select>
+            <div className="absolute top-4 left-4 z-10 flex flex-col gap-1 p-2 bg-surface border border-border rounded-lg shadow-lg">
+                {/* Tool buttons */}
+                {[
+                    { type: 'rect' as ShapeType, label: 'Rectangle', icon: (
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <rect x="3" y="3" width="18" height="18" rx="2"/>
+                        </svg>
+                    )},
+                    { type: 'circle' as ShapeType, label: 'Circle', icon: (
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <circle cx="12" cy="12" r="10"/>
+                        </svg>
+                    )},
+                    { type: 'line' as ShapeType, label: 'Line', icon: (
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <line x1="5" y1="19" x2="19" y2="5"/>
+                        </svg>
+                    )},
+                    { type: 'arrow' as ShapeType, label: 'Arrow', icon: (
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <line x1="5" y1="19" x2="19" y2="5"/>
+                            <polyline points="10 5 19 5 19 14"/>
+                        </svg>
+                    )},
+                    { type: 'diamond' as ShapeType, label: 'Diamond', icon: (
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M12 2 L22 12 L12 22 L2 12 Z"/>
+                        </svg>
+                    )},
+                    { type: 'text' as ShapeType, label: 'Text', icon: (
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M4 7V4h16v3"/>
+                            <line x1="12" y1="4" x2="12" y2="20"/>
+                            <line x1="8" y1="20" x2="16" y2="20"/>
+                        </svg>
+                    )},
+                    { type: 'eraser' as ShapeType, label: 'Eraser', icon: (
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M20 20H7L3 16a1 1 0 0 1 0-1.4l9.9-9.9a1 1 0 0 1 1.4 0l5.3 5.3a1 1 0 0 1 0 1.4L11 20"/>
+                            <path d="m6.5 17.5 5-5"/>
+                        </svg>
+                    )},
+                ].map((tool) => (
+                    <button
+                        key={tool.type}
+                        onClick={() => {
+                            setSelectedShape(tool.type);
+                            setIsTextMode(tool.type === 'text');
+                            if (tool.type !== 'text') {
+                                setTextInputPos(null);
+                                setTextValue('');
+                            }
+                        }}
+                        className={`p-2 rounded-lg transition-colors flex items-center justify-center ${
+                            selectedShape === tool.type 
+                                ? 'bg-primary text-primary-foreground' 
+                                : 'hover:bg-muted'
+                        }`}
+                        title={tool.label}
+                        aria-label={tool.label}
+                    >
+                        {tool.icon}
+                    </button>
+                ))}
+                
+                {/* Font size selector - only show when text mode is selected */}
+                {isTextMode && (
+                    <select
+                        value={fontSize}
+                        onChange={(e) => setFontSize(Number(e.target.value))}
+                        className="mt-1 p-1 text-sm rounded bg-muted border border-border cursor-pointer"
+                        title="Font Size"
+                    >
+                        <option value={12}>12</option>
+                        <option value={16}>16</option>
+                        <option value={20}>20</option>
+                        <option value={24}>24</option>
+                        <option value={32}>32</option>
+                        <option value={48}>48</option>
+                        <option value={64}>64</option>
+                    </select>
+                )}
             </div>
+            
+            {/* Hidden select for getSelectedShape function */}
+            <select
+                id="shape-select"
+                value={selectedShape}
+                onChange={() => {}}
+                className="hidden"
+            >
+                <option value="rect">Rectangle</option>
+                <option value="circle">Circle</option>
+                <option value="line">Line</option>
+                <option value="arrow">Arrow</option>
+                <option value="diamond">Diamond</option>
+                <option value="text">Text</option>
+                <option value="eraser">Eraser</option>
+            </select>
             {/* Top right controls */}
             <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
                 {/* Save button */}
@@ -412,7 +765,55 @@ const Page = () => {
             )}
                 </button>
             </div>
-        <canvas className="w-full h-full block" ref={canvasRef}></canvas>
+        <canvas 
+            className="w-full h-full block" 
+            ref={canvasRef}
+            onClick={handleCanvasClick}
+            style={{ cursor: selectedShape === 'text' ? 'text' : selectedShape === 'eraser' ? 'not-allowed' : 'crosshair' }}
+        ></canvas>
+            
+            {/* Text input overlay */}
+            {textInputPos && (
+                <>
+                    {/* Blinking cursor indicator at click position */}
+                    <div 
+                        className="absolute z-20 w-0.5 bg-primary animate-pulse"
+                        style={{ 
+                            left: textInputPos.x, 
+                            top: textInputPos.y - fontSize,
+                            height: fontSize + 4
+                        }}
+                    />
+                    <div
+                        className="absolute z-20"
+                        style={{ left: textInputPos.x + 4, top: textInputPos.y - fontSize - 4 }}
+                    >
+                        <input
+                            ref={textInputRef}
+                            type="text"
+                            value={textValue}
+                            onChange={(e) => setTextValue(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleTextSubmit();
+                                } else if (e.key === 'Escape') {
+                                    e.preventDefault();
+                                    handleTextCancel();
+                                }
+                            }}
+                            onBlur={(e) => {
+                                // Delay to allow button clicks etc.
+                                setTimeout(() => handleTextSubmit(), 100);
+                            }}
+                            placeholder="Type here..."
+                            autoFocus
+                            className="px-1 py-0 border-2 border-primary rounded bg-surface text-foreground shadow-lg outline-none"
+                            style={{ fontSize: `${fontSize}px`, minWidth: '150px' }}
+                        />
+                    </div>
+                </>
+            )}
     </div>
   )
 }
