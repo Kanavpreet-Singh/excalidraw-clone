@@ -7,30 +7,15 @@ on:
 
 jobs:
   redeploy_everything:
-    name: Deploying everything to the staging cluster
     runs-on: ubuntu-latest
-
+    name: Deploying everything to the staging cluster
     steps:
-      - name: Deploy via SSH
-        run: |
-          echo "${{ secrets.SSH_PRIVATE_KEY_DEVELOPER1 }}" > ~/ssh_key
-          chmod 600 ~/ssh_key
+      - run: |
+          echo "${{ secrets.SSH_PRIVATE_KEY_DEVELOPER1 }}" &> ~/ssh_key
+          mkdir -p /home/runner/.ssh
+          ls /home/runner/.ssh
+          touch /home/runner/.ssh/known_hosts
+          echo "${{ secrets.KNOWN_HOSTS }}" &> /home/runner/.ssh/known_hosts
+          chmod 700 /home/runner/ssh_key
+          ssh -i ~/ssh_key ubuntu@13.233.118.247 -t "cd excalidraw-clone/ && git pull origin dev && export PATH=/home/ubuntu/.nvm/versions/node/v22.13.1/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin && pnpm install && pnpm run build && pm2 restart excalidraw-fe-staging && pm2 restart excalidraw-http-staging && pm2 restart excalidraw-ws-staging"
 
-          mkdir -p ~/.ssh
-          echo "${{ secrets.KNOWN_HOSTS }}" > ~/.ssh/known_hosts
-
-          ssh -o StrictHostKeyChecking=no -i ~/ssh_key ubuntu@13.233.118.247 << 'EOF'
-            set -e
-
-            cd excalidraw-clone
-            git pull origin dev
-
-            export PATH=/home/ubuntu/.nvm/versions/node/v22.13.1/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin
-
-            pnpm install
-            pnpm run build
-
-            pm2 restart excalidraw-fe-staging
-            pm2 restart excalidraw-http-staging
-            pm2 restart excalidraw-ws-staging
-          EOF
