@@ -17,5 +17,16 @@ jobs:
           touch /home/runner/.ssh/known_hosts
           echo "${{ secrets.KNOWN_HOSTS }}" &> /home/runner/.ssh/known_hosts
           chmod 700 /home/runner/ssh_key
-          ssh -i ~/ssh_key ubuntu@13.233.118.247 -t "cd excalidraw-clone/ && git pull origin dev && export PATH=/home/ubuntu/.nvm/versions/node/v22.13.1/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin && pnpm install && pnpm run build && pm2 restart excalidraw-fe-staging && pm2 restart excalidraw-http-staging && pm2 restart excalidraw-ws-staging"
+          ssh -i ~/ssh_key ubuntu@13.233.118.247 -t "
+          export NVM_DIR=\"\$HOME/.nvm\" &&
+          [ -s \"\$NVM_DIR/nvm.sh\" ] && . \"\$NVM_DIR/nvm.sh\" &&
+          nvm use 22 &&
+          cd excalidraw-clone &&
+          git pull origin dev &&
+          pnpm install &&
+          pnpm run build &&
+          pm2 restart excalidraw-fe-staging &&
+          pm2 restart excalidraw-http-staging &&
+          pm2 restart excalidraw-ws-staging
+          "
 
