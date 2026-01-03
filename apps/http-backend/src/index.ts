@@ -8,10 +8,24 @@ import messageRoutes from "./routes/message";
 const app = express();
 const PORT = 3001;
 
+const allowedOrigins = [
+  'http://localhost:3000',                 // local dev
+  'https://structura-fe.testingdemo.me'    // production frontend
+];
+
 app.use(cors({
-  origin: 'http://localhost:3000',
+  origin: function(origin, callback) {
+    // allow requests with no origin (like mobile apps or Postman)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) === -1) {
+      const msg = `The CORS policy for this site does not allow access from the specified Origin.`;
+      return callback(new Error(msg), false);
+    }
+    return callback(null, true);
+  },
   credentials: true
 }));
+
 app.use(express.json());
 console.log("DATABASE_URL:", process.env.DATABASE_URL);
 
