@@ -35,6 +35,16 @@ jobs:
             cd excalidraw-clone
             git pull origin main
 
+            # ==========================
+            # Add 2GB swap temporarily
+            # ==========================
+            if ! swapon --show | grep -q swapfile; then
+              sudo fallocate -l 2G /swapfile
+              sudo chmod 600 /swapfile
+              sudo mkswap /swapfile
+              sudo swapon /swapfile
+            fi
+
             pnpm install
             pnpm run build
 
