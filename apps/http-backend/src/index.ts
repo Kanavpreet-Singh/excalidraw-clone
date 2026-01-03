@@ -9,8 +9,9 @@ const app = express();
 const PORT = 3001;
 
 const allowedOrigins = [
-  'http://localhost:3000',                 // local dev
-  'https://structura-fe.testingdemo.me'    // production frontend
+  'http://localhost:3000',                      // local dev
+  'https://staging.structura-fe.testingdemo.me', // staging frontend
+  'https://structura-fe.testingdemo.me'         // production frontend
 ];
 
 app.use(cors({
