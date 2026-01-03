@@ -16,11 +16,16 @@ jobs:
           echo "${{ secrets.SSH_PRIVATE_KEY_DEVELOPER1 }}" > ~/ssh_key
           chmod 600 ~/ssh_key
 
+          mkdir -p ~/.ssh
+          echo "${{ secrets.KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+
           ssh -o StrictHostKeyChecking=no -i ~/ssh_key ubuntu@13.233.118.247 << 'EOF'
             set -e
 
             cd excalidraw-clone
             git pull origin dev
+
+            export PATH=/home/ubuntu/.nvm/versions/node/v22.13.1/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin
 
             pnpm install
             pnpm run build
