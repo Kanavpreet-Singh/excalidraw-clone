@@ -1,0 +1,44 @@
+name: Deploy to production
+
+on:
+  push:
+    branches:
+      - main
+
+
+jobs:
+  redeploy_everything:
+    runs-on: ubuntu-latest
+    name: Deploying everything to the production cluster
+
+    steps:
+      - name: Deploy via SSH
+        run: |
+          echo "${{ secrets.SSH_PRIVATE_KEY_DEVELOPER1 }}" > ~/ssh_key
+          chmod 600 ~/ssh_key
+
+          mkdir -p ~/.ssh
+          echo "${{ secrets.KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+          ssh -i ~/ssh_key ubuntu@65.0.32.92 << 'EOF'
+            set -e
+
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+
+            nvm use 22
+            export PATH="$PATH:$(npm bin -g)"
+
+            npm install -g pnpm
+            npm install -g pm2
+            cd excalidraw-clone
+            git pull origin dev
+
+            pnpm install
+            pnpm run build
+
+            pm2 restart excalidraw-frontend-prod
+            pm2 restart excalidraw-http-prod
+            pm2 restart excalidraw-ws-prod
+          EOF
