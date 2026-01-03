@@ -168,6 +168,16 @@ const Page = () => {
                     console.log('Unload acknowledged by server');
                     break;
 
+                case 'ping':
+                    // Server heartbeat - respond with pong to stay alive
+                    ws.send(JSON.stringify({ type: 'pong' }));
+                    break;
+
+                case 'pong':
+                    // Server responded to our ping
+                    console.log('Heartbeat pong received');
+                    break;
+
                 case 'error':
                     showToast(`Error: ${data.message}`);
                     break;
@@ -200,11 +210,29 @@ const Page = () => {
             }
         };
 
+        // Handle visibility change - send ping when tab becomes visible
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible' && ws.readyState === WebSocket.OPEN) {
+                console.log('Tab visible, sending ping to verify connection');
+                ws.send(JSON.stringify({ type: 'ping' }));
+            }
+        };
+
         window.addEventListener('beforeunload', handleBeforeUnload);
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        // Client-side heartbeat to keep connection alive during inactivity
+        const clientHeartbeat = setInterval(() => {
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'ping' }));
+            }
+        }, 25000); // Send ping every 25 seconds
 
         // Cleanup on unmount
         return () => {
             window.removeEventListener('beforeunload', handleBeforeUnload);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            clearInterval(clientHeartbeat);
             if (ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ type: 'leave-room', roomId }));
             }

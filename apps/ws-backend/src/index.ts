@@ -56,7 +56,11 @@ interface RoomState {
 interface AuthenticatedWebSocket extends WebSocket {
   userId?: number;
   rooms: Set<string>;  // User can be in multiple rooms
+  isAlive: boolean;    // For heartbeat tracking
 }
+
+// Heartbeat interval (30 seconds)
+const HEARTBEAT_INTERVAL = 30000;
 
 // ==================== IN-MEMORY STATE ====================
 
@@ -369,7 +373,19 @@ wss.on('connection', (ws: AuthenticatedWebSocket, req) => {
     const decoded = jwt.verify(token, JWT_SECRET) as { userId: number };
     ws.userId = decoded.userId;
     ws.rooms = new Set();
+    ws.isAlive = true;
     console.log(`Client connected: User ${ws.userId}`);
+
+    // Send ping to client periodically to keep connection alive
+    const heartbeatInterval = setInterval(() => {
+      if (!ws.isAlive) {
+        console.log(`Client ${ws.userId} failed heartbeat, terminating`);
+        clearInterval(heartbeatInterval);
+        return ws.terminate();
+      }
+      ws.isAlive = false;
+      ws.send(JSON.stringify({ type: 'ping' }));
+    }, HEARTBEAT_INTERVAL);
 
     ws.on('message', async (data) => {
       try {
@@ -411,6 +427,17 @@ wss.on('connection', (ws: AuthenticatedWebSocket, req) => {
               await saveRoomToDb(roomId, true);
             }
             ws.send(JSON.stringify({ type: 'unload-ack' }));
+            break;
+
+          case 'ping':
+            // Client heartbeat - respond with pong
+            ws.isAlive = true;
+            ws.send(JSON.stringify({ type: 'pong' }));
+            break;
+
+          case 'pong':
+            // Client responded to our ping
+            ws.isAlive = true;
             break;
 
           default:
