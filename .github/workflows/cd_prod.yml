@@ -35,6 +35,9 @@ jobs:
             cd excalidraw-clone
             git pull origin main
 
+            rm -f apps/excalidraw-frontend/package-lock.json
+            rm -f apps/excalidraw-frontend/.next/lock
+
             # ==========================
             # Add 2GB swap temporarily
             # ==========================
