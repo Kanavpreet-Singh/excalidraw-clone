@@ -30,6 +30,8 @@ jobs:
             nvm use 22
             export PATH="$PATH:$(npm bin -g)"
 
+            npm install -g pnpm
+
             cd excalidraw-clone
             git pull origin dev
 
