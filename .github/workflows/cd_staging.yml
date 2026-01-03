@@ -1,0 +1,21 @@
+name: Deploy to staging
+
+on:
+  push:
+    branches:
+      - "dev"
+
+jobs:
+  redeploy_everything:
+    name: Deploying everything to the staging cluster
+    steps:
+      - name: SSH Into server
+        run: |
+          echo ${{ secrets.SSH_PRIVATE_KEY_DEVELOPER1 }} &> ~/ssh_key
+          ssh -i ~/ssh_key ubuntu@13.233.118.247
+          cd excalidraw-clone/ && git pull origin dev
+          pnpm install
+          pnpm run build
+          pm2 restart excalidraw-fe-staging
+          pm2 restart excalidraw-http-staging
+          pm2 restart excalidraw-ws-staging
