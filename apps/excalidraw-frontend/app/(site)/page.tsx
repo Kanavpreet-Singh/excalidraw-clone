@@ -14,7 +14,7 @@ export default function Home() {
                 </h1>
                 <p className="text-lg md:text-xl text-muted-foreground max-w-xl">
                   Structura is a powerful, real-time collaborative whiteboard tool
-                  for creating stunning diagrams, flowcharts, and visual content.
+                  for creating stunninggg diagrams, flowcharts, and visual content.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-4">
                   <Link
