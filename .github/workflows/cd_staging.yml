@@ -21,7 +21,7 @@ jobs:
           echo "${{ secrets.KNOWN_HOSTS }}" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-          ssh -i ~/ssh_key ubuntu@13.233.118.247 << 'EOF'
+          ssh -i ~/ssh_key ubuntu@52.66.242.186 << 'EOF'
             set -e
 
             export NVM_DIR="$HOME/.nvm"
