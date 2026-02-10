@@ -9,12 +9,14 @@ module.exports = {
     {
       name: "http-backend",
       cwd: "apps/http-backend",
-      script: "dist/index.js"
+      script: "pnpm",
+      args: "start"
     },
     {
       name: "ws-backend",
       cwd: "apps/ws-backend",
-      script: "dist/index.js"
+      script: "pnpm",
+      args: "start"
     }
   ]
 };
