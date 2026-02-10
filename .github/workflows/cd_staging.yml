@@ -12,15 +12,18 @@ jobs:
     name: Deploying everything to the staging cluster
 
     steps:
-      - name: Deploy via SSH
+      - name: Configure SSH
         run: |
+          mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY_DEVELOPER1 }}" > ~/ssh_key
           chmod 600 ~/ssh_key
+          
+      - name: Add server to SSH known hosts
+        run: |
+          ssh-keyscan -H 52.66.242.186 >> ~/.ssh/known_hosts
 
-          mkdir -p ~/.ssh
-          echo "${{ secrets.KNOWN_HOSTS }}" > ~/.ssh/known_hosts
-          chmod 600 ~/.ssh/known_hosts
-
+      - name: Deploy via SSH
+        run: |
           ssh -i ~/ssh_key ubuntu@52.66.242.186 << 'EOF'
             set -e
 
@@ -38,7 +41,7 @@ jobs:
             pnpm install
             pnpm run build
 
-            pm2 restart excalidraw-fe-staging
-            pm2 restart excalidraw-http-staging
-            pm2 restart excalidraw-ws-staging
+            pm2 restart excalidraw-frontend
+            pm2 restart http-backend
+            pm2 restart ws-backend
           EOF
