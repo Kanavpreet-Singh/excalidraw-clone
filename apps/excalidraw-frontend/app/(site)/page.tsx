@@ -10,7 +10,7 @@ export default function Home() {
               <div className="space-y-6">
                 <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-foreground leading-tight">
                   Create Beautiful Diagrams{" "}
-                  <span className="text-primary">Collaboratively , this is to test cd</span>
+                  <span className="text-primary">Collaboratively</span>
                 </h1>
                 <p className="text-lg md:text-xl text-muted-foreground max-w-xl">
                   Structura is a powerful, real-time collaborative whiteboard tool
