@@ -34,8 +34,8 @@ jobs:
             nvm use 22
             export PATH="$PATH:$(npm bin -g)"
 
-            npm install -g pnpm
-            npm install -g pm2
+            command -v pnpm >/dev/null 2>&1 || npm install -g pnpm
+            command -v pm2 >/dev/null 2>&1 || npm install -g pm2
             cd excalidraw-clone
             git pull origin dev
 
