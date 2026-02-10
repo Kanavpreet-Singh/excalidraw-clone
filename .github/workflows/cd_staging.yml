@@ -32,15 +32,17 @@ jobs:
             [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
 
             nvm use 22
+            export PATH="$PATH:$(npm bin -g)"
 
+            npm install -g pnpm
+            npm install -g pm2
             cd excalidraw-clone
             git pull origin dev
 
-            pnpm install --frozen-lockfile
+            pnpm install
             pnpm run build
 
-            pm2 start ecosystem.config.js --update-env || pm2 restart ecosystem.config.js --update-env
-
-            pm2 save
+            pm2 restart excalidraw-frontend
+            pm2 restart http-backend
+            pm2 restart ws-backend
           EOF
-
