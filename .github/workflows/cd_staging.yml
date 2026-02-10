@@ -6,6 +6,7 @@ on:
       - dev
 
 
+
 jobs:
   redeploy_everything:
     runs-on: ubuntu-latest
@@ -31,17 +32,15 @@ jobs:
             [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
 
             nvm use 22
-            export PATH="$PATH:$(npm bin -g)"
 
-            npm install -g pnpm
-            npm install -g pm2
             cd excalidraw-clone
             git pull origin dev
 
-            pnpm install
+            pnpm install --frozen-lockfile
             pnpm run build
 
-            pm2 restart excalidraw-frontend
-            pm2 restart http-backend
-            pm2 restart ws-backend
+            pm2 start ecosystem.config.js --update-env || pm2 restart ecosystem.config.js --update-env
+
+            pm2 save
           EOF
+
