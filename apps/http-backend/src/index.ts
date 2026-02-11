@@ -4,6 +4,7 @@ import cors from "cors";
 import authRoutes from "./routes/auth";
 import roomRoutes from "./routes/room";
 import messageRoutes from "./routes/message";
+import diagramRoutes from "./routes/diagram";
 
 const app = express();
 const PORT = 3001;
@@ -40,6 +41,7 @@ app.get("/", (req, res) => {
 app.use("/api", authRoutes);
 app.use("/api", roomRoutes);
 app.use("/api", messageRoutes);
+app.use("/api", diagramRoutes);
 
 app.listen(PORT, () => {
   console.log(`HTTP server running on http://localhost:${PORT}`);

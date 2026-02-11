@@ -48,6 +48,12 @@ const Page = () => {
     const [fontSize, setFontSize] = useState(20);
     const textInputRef = useRef<HTMLInputElement>(null);
     
+    // AI Prompt state
+    const [aiPrompt, setAiPrompt] = useState('');
+    const [aiResponse, setAiResponse] = useState<string>('');
+    const [isLoadingAI, setIsLoadingAI] = useState(false);
+    const [showPromptBox, setShowPromptBox] = useState(false);
+    
     // Ref for eraser function to avoid stale closure
     const eraseShapeAtRef = useRef<(x: number, y: number) => boolean>(() => false);
     
@@ -78,6 +84,88 @@ const Page = () => {
     const showToast = (message: string) => {
         setToast({ message, show: true });
         setTimeout(() => setToast({ message: '', show: false }), 3000);
+    };
+
+    // Handle AI diagram generation
+    const handleGenerateDiagram = async () => {
+        if (!aiPrompt.trim()) {
+            showToast('Please enter a prompt');
+            return;
+        }
+
+        if (!isConnected) {
+            showToast('Not connected to room');
+            return;
+        }
+
+        setIsLoadingAI(true);
+        setAiResponse('Drawing your diagram on the canvas...');
+        
+        try {
+            const token = localStorage.getItem("token");
+            const response = await fetch(`${config.API_URL}/api/generate-diagram`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'token': token || '',
+                },
+                body: JSON.stringify({ prompt: aiPrompt }),
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to generate diagram');
+            }
+
+            const data = await response.json();
+            
+            if (!data.diagram || !Array.isArray(data.diagram)) {
+                throw new Error('Invalid diagram data');
+            }
+
+            // Add shapes to canvas with animation delay
+            setAiResponse(`Drawing ${data.diagram.length} shapes...`);
+            
+            for (let i = 0; i < data.diagram.length; i++) {
+                const shape = data.diagram[i];
+                
+                // Add some delay for visual effect
+                await new Promise(resolve => setTimeout(resolve, 100));
+                
+                // Add shape to local state
+                shapesRef.current.push(shape);
+                
+                // Broadcast to other users via WebSocket
+                if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                    wsRef.current.send(JSON.stringify({
+                        type: 'add-shape',
+                        roomId,
+                        shape
+                    }));
+                }
+                
+                // Redraw canvas
+                redrawCanvas();
+                
+                // Update progress
+                setAiResponse(`Drawing shapes... (${i + 1}/${data.diagram.length})`);
+            }
+            
+            setAiResponse('Diagram drawn successfully! ✓');
+            showToast('Diagram generated and drawn!');
+            
+            // Clear response after 2 seconds
+            setTimeout(() => {
+                setAiResponse('');
+                setAiPrompt('');
+            }, 2000);
+            
+        } catch (error) {
+            console.error('Error generating diagram:', error);
+            showToast('Failed to generate diagram');
+            setAiResponse('Error: Failed to generate diagram');
+        } finally {
+            setIsLoadingAI(false);
+        }
     };
 
     // Theme setup
@@ -271,19 +359,23 @@ const Page = () => {
                 ctx.stroke();
                 break;
             case "arrow": {
+                // Ensure horizontal/vertical arrows are perfectly straight
+                const drawHeight = Math.abs(shape.height) < 1 ? 0 : shape.height;
+                const drawWidth = Math.abs(shape.width) < 1 ? 0 : shape.width;
+                
                 // Draw the line
                 ctx.beginPath();
                 ctx.moveTo(shape.x, shape.y);
-                ctx.lineTo(shape.x + shape.width, shape.y + shape.height);
+                ctx.lineTo(shape.x + drawWidth, shape.y + drawHeight);
                 ctx.stroke();
                 
                 // Draw arrowhead
-                const angle = Math.atan2(shape.height, shape.width);
+                const angle = Math.atan2(drawHeight, drawWidth);
                 const headLength = 15;
                 const headAngle = Math.PI / 6; // 30 degrees
                 
-                const endX = shape.x + shape.width;
-                const endY = shape.y + shape.height;
+                const endX = shape.x + drawWidth;
+                const endY = shape.y + drawHeight;
                 
                 ctx.beginPath();
                 ctx.moveTo(endX, endY);
@@ -316,6 +408,88 @@ const Page = () => {
                     ctx.fillText(shape.text, shape.x, shape.y);
                 }
                 break;
+        }
+        
+        // Draw text for shapes that have text property (rect, circle, etc.)
+        if (shape.text && shape.type !== "text") {
+            let textFontSize = shape.fontSize || 16;
+            ctx.fillStyle = localStorage.getItem("theme") === "dark" ? "white" : "black";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            
+            // Calculate center position for text
+            const centerX = shape.x + shape.width / 2;
+            const centerY = shape.y + shape.height / 2;
+            
+            // Word wrapping logic
+            const padding = 10; // padding from edges
+            const maxWidth = shape.width - (padding * 2);
+            const maxHeight = shape.height - (padding * 2);
+            
+            // Try to fit text with wrapping
+            ctx.font = `${textFontSize}px sans-serif`;
+            const words = shape.text.split(' ');
+            const lines: string[] = [];
+            let currentLine = '';
+            
+            // Build lines
+            for (const word of words) {
+                const testLine = currentLine ? `${currentLine} ${word}` : word;
+                const metrics = ctx.measureText(testLine);
+                
+                if (metrics.width > maxWidth && currentLine) {
+                    lines.push(currentLine);
+                    currentLine = word;
+                } else {
+                    currentLine = testLine;
+                }
+            }
+            if (currentLine) {
+                lines.push(currentLine);
+            }
+            
+            // Calculate if text fits vertically
+            const lineHeight = textFontSize * 1.2;
+            const totalHeight = lines.length * lineHeight;
+            
+            // If text doesn't fit, reduce font size
+            if (totalHeight > maxHeight || lines.some(line => ctx.measureText(line).width > maxWidth)) {
+                // Calculate scale factor
+                const scaleWidth = maxWidth / Math.max(...lines.map(line => ctx.measureText(line).width));
+                const scaleHeight = maxHeight / totalHeight;
+                const scale = Math.min(scaleWidth, scaleHeight, 1);
+                
+                textFontSize = Math.max(8, Math.floor(textFontSize * scale)); // Min 8px
+                ctx.font = `${textFontSize}px sans-serif`;
+                
+                // Rebuild lines with new font size
+                lines.length = 0;
+                currentLine = '';
+                for (const word of words) {
+                    const testLine = currentLine ? `${currentLine} ${word}` : word;
+                    const metrics = ctx.measureText(testLine);
+                    
+                    if (metrics.width > maxWidth && currentLine) {
+                        lines.push(currentLine);
+                        currentLine = word;
+                    } else {
+                        currentLine = testLine;
+                    }
+                }
+                if (currentLine) {
+                    lines.push(currentLine);
+                }
+            }
+            
+            // Draw lines centered
+            const startY = centerY - ((lines.length - 1) * lineHeight) / 2;
+            lines.forEach((line, index) => {
+                ctx.fillText(line, centerX, startY + (index * lineHeight));
+            });
+            
+            // Reset text alignment
+            ctx.textAlign = "left";
+            ctx.textBaseline = "alphabetic";
         }
     };
 
@@ -960,6 +1134,61 @@ const Page = () => {
                     </div>
                 </>
             )}
+
+            {/* AI Prompt Box - Middle Right */}
+            <div className="fixed top-1/2 right-4 -translate-y-1/2 z-30 flex flex-col items-end gap-2">
+                {!showPromptBox ? (
+                    <button
+                        onClick={() => setShowPromptBox(true)}
+                        className="px-4 py-2 bg-primary text-primary-foreground rounded-lg shadow-lg hover:opacity-90 transition-opacity"
+                    >
+                        ✨ AI Assistant
+                    </button>
+                ) : (
+                    <div className="bg-surface border-2 border-primary rounded-lg shadow-xl p-4 w-80">
+                        <div className="flex justify-between items-center mb-3">
+                            <h3 className="text-sm font-semibold text-foreground">AI Diagram Generator</h3>
+                            <button
+                                onClick={() => setShowPromptBox(false)}
+                                className="text-foreground hover:opacity-70"
+                            >
+                                ✕
+                            </button>
+                        </div>
+                        
+                        <textarea
+                            value={aiPrompt}
+                            onChange={(e) => setAiPrompt(e.target.value)}
+                            placeholder="Describe the diagram you want to create..."
+                            className="w-full p-2 border border-primary/30 rounded bg-background text-foreground resize-none focus:outline-none focus:border-primary"
+                            rows={3}
+                            disabled={isLoadingAI}
+                        />
+                        
+                        <button
+                            onClick={handleGenerateDiagram}
+                            disabled={isLoadingAI || !aiPrompt.trim()}
+                            className="w-full mt-2 px-4 py-2 bg-primary text-primary-foreground rounded hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+                        >
+                            {isLoadingAI ? 'Generating...' : 'Generate Diagram'}
+                        </button>
+
+                        {/* Display AI Response */}
+                        {aiResponse && (
+                            <div className="mt-3 p-3 bg-background border border-primary/30 rounded">
+                                <div className="flex items-center gap-2">
+                                    {isLoadingAI && (
+                                        <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                                    )}
+                                    <p className="text-sm text-foreground">
+                                        {aiResponse}
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
     </div>
   )
 }

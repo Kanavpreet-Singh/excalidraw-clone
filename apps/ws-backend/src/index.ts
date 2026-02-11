@@ -39,11 +39,13 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 
 interface Shape {
   id: string;
-  type: 'rect' | 'circle' | 'line' | 'diamond';
+  type: 'rect' | 'circle' | 'line' | 'diamond' | 'arrow' | 'text';
   x: number;
   y: number;
   width: number;
   height: number;
+  text?: string;
+  fontSize?: number;
 }
 
 interface RoomState {
